@@ -77,85 +77,14 @@ public static class BciUiSceneBuilder
             new Vector2(0.0f, -110.0f)
         );
 
-        CreateText(
-            calibrationPanel,
-            "CalibrationTitle",
-            "Calibration",
-            34.0f,
-            new Vector2(0.0f, 315.0f),
-            new Vector2(520.0f, 52.0f)
-        );
-        CreateText(
-            calibrationPanel,
-            "SubjectIdLabel",
-            "Subject ID",
-            20.0f,
-            new Vector2(-210.0f, 275.0f),
-            new Vector2(160.0f, 34.0f)
-        );
-        var subjectIdInput = CreateInputField(
-            calibrationPanel,
-            "SubjectIdInput",
-            "pc2_test",
-            new Vector2(45.0f, 275.0f),
-            new Vector2(300.0f, 42.0f)
-        );
-        var startCalibrationButton = CreateButton(
-            calibrationPanel,
-            "StartCalibrationButton",
-            "Start Calibration",
-            new Vector2(0.0f, 110.0f)
-        );
-        var calibrationProgressText = CreateText(
-            calibrationPanel,
-            "CalibrationProgressText",
-            "Calibration 0 / 40",
-            22.0f,
-            new Vector2(0.0f, 75.0f),
-            new Vector2(460.0f, 36.0f)
-        );
-        var calibrationProgressTrack = CreateBarTrack(
-            calibrationPanel,
-            "CalibrationProgressTrack",
-            new Vector2(420.0f, 18.0f),
-            new Vector2(0.0f, 45.0f)
-        );
-        var calibrationProgressFill = CreateBarFill(
-            calibrationProgressTrack,
-            "CalibrationProgressFill",
-            new Color(0.35f, 0.85f, 1.0f),
-            new Vector2(0.0f, 18.0f)
-        );
-        var warningText = CreateText(
-            calibrationPanel,
-            "WarningText",
-            "",
-            20.0f,
-            new Vector2(0.0f, 5.0f),
-            new Vector2(700.0f, 34.0f)
-        );
-        warningText.color = new Color(1.0f, 0.25f, 0.25f);
-        var cueText = CreateText(
-            calibrationPanel,
-            "CueText",
-            "",
-            64.0f,
-            Vector2.zero,
-            new Vector2(760.0f, 160.0f)
-        );
-        cueText.fontStyle = FontStyles.Bold;
-        var saveBundleButton = CreateButton(
-            calibrationPanel,
-            "SaveBundleButton",
-            "Save Model",
-            new Vector2(0.0f, -255.0f)
-        );
-        var backCalibrationButton = CreateButton(
-            calibrationPanel,
-            "BackToMenuFromCalibrationButton",
-            "Back",
-            new Vector2(0.0f, -325.0f)
-        );
+        TMP_InputField subjectIdInput = null;
+        Button startCalibrationButton = null;
+        Button saveBundleButton = null;
+        Button backCalibrationButton = null;
+        RectTransform calibrationProgressTrack = null;
+        RectTransform calibrationProgressFill = null;
+        TMP_Text calibrationProgressText = null;
+        TMP_Text warningText = null;
 
         var leftProbaText = CreateText(
             realtimePanel,
@@ -181,6 +110,15 @@ public static class BciUiSceneBuilder
             new Vector2(0.0f, -175.0f),
             new Vector2(420.0f, 44.0f)
         );
+        var cueText = CreateText(
+            realtimePanel,
+            "RealtimeCueText",
+            "",
+            44.0f,
+            new Vector2(0.0f, 210.0f),
+            new Vector2(760.0f, 80.0f)
+        );
+        cueText.fontStyle = FontStyles.Bold;
         var probaIndicatorTrack = CreateBarTrack(
             realtimePanel,
             "ProbaIndicatorTrack",
@@ -236,7 +174,21 @@ public static class BciUiSceneBuilder
         panel.probaIndicatorThumb = probaIndicatorThumb;
         panel.realtimeHintText = realtimeHintText;
 
+        var calibrationController = canvas.GetComponent<BciCalibrationController>();
+        if (calibrationController == null)
+        {
+            calibrationController = canvas.gameObject.AddComponent<BciCalibrationController>();
+        }
+        calibrationController.calibrationPanel = calibrationPanel;
+        calibrationController.warningColor = panel.warningColor;
+        calibrationController.leftCueColor = panel.leftCueColor;
+        calibrationController.rightCueColor = panel.rightCueColor;
+        calibrationController.restCueColor = panel.restCueColor;
+        calibrationController.readyCueColor = panel.readyCueColor;
+        calibrationController.realtimeCueColor = panel.realtimeCueColor;
+
         EditorUtility.SetDirty(panel);
+        EditorUtility.SetDirty(calibrationController);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         Debug.Log("Rebuilt editable Motor Imagery UI in MainMenu.unity");

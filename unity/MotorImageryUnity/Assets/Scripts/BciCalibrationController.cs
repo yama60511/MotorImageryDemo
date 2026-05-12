@@ -1,11 +1,25 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class BciCalibrationController : MonoBehaviour
 {
+    public enum CalibrationEditorPreviewView
+    {
+        Menu,
+        AcquireData,
+        AcquireCue,
+        TrainModel,
+        CheckPerformance
+    }
+
+    public RectTransform calibrationPanel;
+    public BciScreenNavigator screenNavigator;
+
     public TMP_Text cueText;
     public Button startCalibrationButton;
     public Button shutdownButton;
@@ -32,20 +46,78 @@ public class BciCalibrationController : MonoBehaviour
     public int restMarker = 99;
     public bool shuffleCalibrationTrials = true;
     public int trialShuffleSeed = 1;
-    // How long to wait for the service to broadcast its service_config
-    // before falling back to the Inspector defaults above.
+    public string decoderName = "csp_lda";
     public float serviceConfigWaitSeconds = 3.0f;
+    public CalibrationEditorPreviewView editorPreviewView = CalibrationEditorPreviewView.Menu;
 
     private BciLslStreams streams;
-    private string serviceState = "";
+    private string serviceState = "DISCONNECTED";
     private string currentSubjectId = "pc2_test";
+    private string selectedSessionId = "";
+    private string pendingUseSession = "";
+    private string pendingUseDecoder = "";
+    private readonly List<string> availableSessions = new List<string>();
+    private readonly List<string> availableDecoders = new List<string>();
+    private readonly Dictionary<string, Toggle> modelToggles = new Dictionary<string, Toggle>();
+    private readonly List<PerformanceRecord> performanceRecords = new List<PerformanceRecord>();
     private int calibrationProgressCurrent;
     private int calibrationProgressTotal = 40;
     private Coroutine calibrationRoutine;
     private bool initialized;
     private bool serviceConfigReceived;
 
+    private RectTransform workflowRoot;
+    private RectTransform menuView;
+    private RectTransform acquireSetupView;
+    private RectTransform acquireCueView;
+    private RectTransform trainView;
+    private RectTransform performanceView;
+    private TMP_InputField acquireSubjectInput;
+    private TMP_Text cueTaskText;
+    private TMP_Text acquireProgressText;
+    private RectTransform acquireProgressTrack;
+    private RectTransform acquireProgressFill;
+    private Button acquireStartButton;
+    private Button menuBackButton;
+    private Button trainSelectedModelsButton;
+    private Button showPerformanceButton;
+    private Button trainSessionDropdownButton;
+    private TMP_Text trainSessionDropdownLabel;
+    private RectTransform trainSessionDropdownList;
+    private RectTransform trainSessionDropdownContent;
+    private RectTransform trainModelList;
+    private TMP_Text performanceBestText;
+    private RectTransform performanceList;
+    private TMP_Text performanceDetailsText;
+    private TMP_Text localWarningText;
+    private bool trainSessionDropdownOpen;
+    private string selectedPerformanceSessionId = "";
+    private Button performanceSessionDropdownButton;
+    private TMP_Text performanceSessionDropdownLabel;
+    private RectTransform performanceSessionDropdownList;
+    private RectTransform performanceSessionDropdownContent;
+    private bool performanceSessionDropdownOpen;
+
     private const float FallbackCalibrationTrackWidth = 420.0f;
+    private static readonly Vector2 BottomBackButtonPosition = new Vector2(0.0f, -345.0f);
+
+    private class PerformanceRecord
+    {
+        public string session = "";
+        public string decoder = "";
+        public string acc = "";
+        public string foldMin = "";
+        public string foldMax = "";
+        public string folds = "";
+        public string trials = "";
+        public string trainedAt = "";
+        public string confusion = "";
+        public string channels = "";
+        public string windowSamples = "";
+        public string bundlePath = "";
+        public string rawDataPath = "";
+        public string bandpass = "";
+    }
 
     public void Initialize(BciLslStreams lslStreams)
     {
@@ -60,61 +132,285 @@ public class BciCalibrationController : MonoBehaviour
             streams.StatusReceived += HandleStatusMessage;
         }
 
-        if (cueText != null)
+        if (calibrationPanel == null)
         {
-            cueText.raycastTarget = false;
+            calibrationPanel = ResolveCalibrationPanel();
         }
 
-        if (startCalibrationButton != null)
-        {
-            startCalibrationButton.onClick.AddListener(StartCalibration);
-        }
-
-        if (shutdownButton != null)
-        {
-            shutdownButton.onClick.AddListener(Shutdown);
-        }
-
-        if (saveBundleButton != null)
-        {
-            saveBundleButton.onClick.AddListener(SaveBundle);
-        }
-
-        if (subjectIdInput != null)
-        {
-            if (string.IsNullOrWhiteSpace(subjectIdInput.text))
-            {
-                subjectIdInput.SetTextWithoutNotify(currentSubjectId);
-            }
-            else
-            {
-                currentSubjectId = SanitizeSubjectId(subjectIdInput.text);
-            }
-            subjectIdInput.onEndEdit.AddListener(UpdateSubjectIdFromInput);
-        }
+        HideLegacyControls();
+        BuildWorkflowUi();
 
         initialized = true;
-        SetCueText("", readyCueColor);
-        SetWarningText("");
-        UpdateCalibrationProgress(0, 40);
+        ShowMenu();
+        UpdateCollectionProgress(0, 40);
         UpdateControlInteractivity();
     }
 
-    private void StartCalibration()
+    public void BuildEditorPreview(RectTransform previewPanel)
     {
-        if (calibrationRoutine != null)
+        if (Application.isPlaying)
         {
-            Debug.LogWarning("Calibration marker sequence is already running.");
             return;
         }
 
-        currentSubjectId = GetSubjectId();
-        streams?.PushCommand($"start_calibration:subject={currentSubjectId}");
-        serviceState = "CALIBRATING";
-        UpdateCalibrationProgress(0, trialsPerClass * 2);
+        if (previewPanel != null)
+        {
+            calibrationPanel = previewPanel;
+        }
+        if (calibrationPanel == null)
+        {
+            calibrationPanel = ResolveCalibrationPanel();
+        }
+
+        HideLegacyControls();
+        BuildWorkflowUi();
+        ShowEditorPreviewView();
+        UpdateCollectionProgress(0, trialsPerClass * 2);
+        UpdateControlInteractivity();
+    }
+
+    private RectTransform ResolveCalibrationPanel()
+    {
+        if (subjectIdInput != null)
+        {
+            return subjectIdInput.GetComponentInParent<RectTransform>();
+        }
+        if (startCalibrationButton != null)
+        {
+            return startCalibrationButton.GetComponentInParent<RectTransform>();
+        }
+        return GetComponent<RectTransform>();
+    }
+
+    private void HideLegacyControls()
+    {
+        SetActive(subjectIdInput, false);
+        SetActive(startCalibrationButton, false);
+        SetActive(saveBundleButton, false);
+        SetActive(calibrationProgressTrack, false);
+        SetActive(calibrationProgressFill, false);
+        SetActive(calibrationProgressText, false);
+        SetActive(warningText, false);
+        SetActive(cueText, false);
+        SetLegacyChildActive("CalibrationTitle", false);
+        SetLegacyChildActive("SubjectIdLabel", false);
+        SetLegacyChildActive("BackToMenuFromCalibrationButton", false);
+    }
+
+    private void BuildWorkflowUi()
+    {
+        if (calibrationPanel == null)
+        {
+            return;
+        }
+
+        Transform existingWorkflowRoot = FindChildByName(calibrationPanel, "CalibrationWorkflowRoot");
+        if (existingWorkflowRoot != null)
+        {
+            DestroyGameObject(existingWorkflowRoot.gameObject);
+        }
+
+        workflowRoot = CreatePanel(calibrationPanel, "CalibrationWorkflowRoot", true);
+        workflowRoot.anchorMin = Vector2.zero;
+        workflowRoot.anchorMax = Vector2.one;
+        workflowRoot.offsetMin = Vector2.zero;
+        workflowRoot.offsetMax = Vector2.zero;
+
+        menuView = CreatePanel(workflowRoot, "CalibrationMenuView", true);
+        acquireSetupView = CreatePanel(workflowRoot, "AcquireSetupView", false);
+        acquireCueView = CreatePanel(workflowRoot, "AcquireCueView", false);
+        trainView = CreatePanel(workflowRoot, "TrainModelView", false);
+        performanceView = CreatePanel(workflowRoot, "CheckPerformanceView", false);
+
+        BuildMenuView();
+        BuildAcquireViews();
+        BuildTrainView();
+        BuildPerformanceView();
+    }
+
+    private void BuildMenuView()
+    {
+        CreateText(menuView, "CalibrationMenuTitle", "Calibration", 36.0f, new Vector2(0.0f, 230.0f), new Vector2(620.0f, 54.0f));
+        CreateButton(menuView, "AcquireDataMenuButton", "Acquire Data", new Vector2(0.0f, 110.0f), ShowAcquireSetup);
+        CreateButton(menuView, "TrainModelMenuButton", "Train Model", new Vector2(0.0f, 35.0f), ShowTrainModel);
+        CreateButton(menuView, "CheckPerformanceMenuButton", "Check Performance", new Vector2(0.0f, -40.0f), ShowPerformance);
+        menuBackButton = CreateButton(menuView, "CalibrationMenuBackButton", "Back", BottomBackButtonPosition, ShowMainMenu);
+    }
+
+    private void BuildAcquireViews()
+    {
+        CreateText(acquireSetupView, "AcquireTitle", "Acquire Data", 34.0f, new Vector2(0.0f, 235.0f), new Vector2(620.0f, 52.0f));
+        CreateText(acquireSetupView, "AcquireSubjectLabel", "Subject ID", 20.0f, new Vector2(-245.0f, 145.0f), new Vector2(150.0f, 34.0f));
+        acquireSubjectInput = CreateInputField(acquireSetupView, "AcquireSubjectInput", currentSubjectId, new Vector2(-30.0f, 145.0f), new Vector2(260.0f, 42.0f));
+        acquireSubjectInput.onEndEdit.AddListener(value => currentSubjectId = SanitizeSubjectId(value));
+        acquireStartButton = CreateButton(acquireSetupView, "AcquireStartButton", "Start", new Vector2(210.0f, 145.0f), StartCollection, new Vector2(120.0f, 42.0f), 18.0f);
+        CreateButton(acquireSetupView, "AcquireBackButton", "Back", BottomBackButtonPosition, ShowMenu);
+
+        CreateText(acquireCueView, "AcquireCueTitle", "Acquire Data", 26.0f, new Vector2(0.0f, 300.0f), new Vector2(620.0f, 42.0f));
+        acquireProgressText = CreateText(acquireCueView, "AcquireProgressText", "Collection 0 / 40", 22.0f, new Vector2(0.0f, -195.0f), new Vector2(520.0f, 36.0f));
+        acquireProgressTrack = CreateBarTrack(acquireCueView, "AcquireProgressTrack", new Vector2(460.0f, 18.0f), new Vector2(0.0f, -225.0f));
+        acquireProgressFill = CreateBarFill(acquireProgressTrack, "AcquireProgressFill", leftCueColor, new Vector2(0.0f, 18.0f));
+        cueTaskText = CreateText(acquireCueView, "AcquireCueText", "", 72.0f, new Vector2(0.0f, 45.0f), new Vector2(760.0f, 130.0f));
+        cueTaskText.fontStyle = FontStyles.Bold;
+        CreateButton(acquireCueView, "AbortCollectionButton", "Abort", new Vector2(0.0f, -285.0f), AbortCollection);
+    }
+
+    private void BuildTrainView()
+    {
+        CreateText(trainView, "TrainTitle", "Train Model", 34.0f, new Vector2(0.0f, 315.0f), new Vector2(620.0f, 52.0f));
+        CreateText(trainView, "TrainSessionLabel", "EEG Data", 18.0f, new Vector2(-290.0f, 255.0f), new Vector2(130.0f, 32.0f));
+        trainSessionDropdownButton = CreateButton(trainView, "TrainSessionDropdownButton", "No EEG Data", new Vector2(35.0f, 255.0f), ToggleTrainSessionDropdown, new Vector2(560.0f, 42.0f), 16.0f);
+        trainSessionDropdownLabel = trainSessionDropdownButton.GetComponentInChildren<TMP_Text>();
+        if (trainSessionDropdownLabel != null)
+        {
+            trainSessionDropdownLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+        trainSessionDropdownList = CreateScrollPanel(trainView, "TrainSessionDropdownList", new Vector2(35.0f, 140.0f), new Vector2(560.0f, 150.0f), out trainSessionDropdownContent);
+        trainSessionDropdownList.gameObject.SetActive(false);
+        trainModelList = CreatePanel(trainView, "TrainModelList", true);
+        trainModelList.sizeDelta = new Vector2(720.0f, 150.0f);
+        trainModelList.anchoredPosition = new Vector2(0.0f, 80.0f);
+        trainSelectedModelsButton = CreateButton(trainView, "TrainSelectedModelsButton", "Train Selected Models", new Vector2(0.0f, -55.0f), TrainSelectedModels);
+        CreateButton(trainView, "TrainBackButton", "Back", BottomBackButtonPosition, ShowMenu);
+        RebuildTrainSessionList();
+        RebuildModelToggleList();
+    }
+
+    private void BuildPerformanceView()
+    {
+        CreateText(performanceView, "PerformanceTitle", "Check Performance", 34.0f, new Vector2(0.0f, 320.0f), new Vector2(680.0f, 52.0f));
+        CreateText(performanceView, "PerformanceSessionLabel", "EEG Data", 18.0f, new Vector2(-290.0f, 270.0f), new Vector2(130.0f, 30.0f));
+        performanceSessionDropdownButton = CreateButton(performanceView, "PerformanceSessionDropdownButton", "No EEG Data", new Vector2(-20.0f, 270.0f), TogglePerformanceSessionDropdown, new Vector2(400.0f, 38.0f), 14.0f);
+        performanceSessionDropdownLabel = performanceSessionDropdownButton.GetComponentInChildren<TMP_Text>();
+        if (performanceSessionDropdownLabel != null)
+        {
+            performanceSessionDropdownLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+        performanceSessionDropdownList = CreateScrollPanel(performanceView, "PerformanceSessionDropdownList", new Vector2(-20.0f, 155.0f), new Vector2(400.0f, 150.0f), out performanceSessionDropdownContent);
+        performanceSessionDropdownList.gameObject.SetActive(false);
+        showPerformanceButton = CreateButton(performanceView, "ShowPerformanceButton", "Show Results", new Vector2(250.0f, 270.0f), QueryPerformance);
+        performanceBestText = CreateText(performanceView, "PerformanceBestText", "Best: -", 18.0f, new Vector2(0.0f, 225.0f), new Vector2(760.0f, 34.0f));
+        performanceList = CreatePanel(performanceView, "PerformanceList", true);
+        performanceList.sizeDelta = new Vector2(780.0f, 250.0f);
+        performanceList.anchoredPosition = new Vector2(0.0f, 70.0f);
+        performanceDetailsText = CreateText(performanceView, "PerformanceDetailsText", "", 15.0f, new Vector2(0.0f, -190.0f), new Vector2(780.0f, 150.0f));
+        performanceDetailsText.alignment = TextAlignmentOptions.TopLeft;
+        CreateButton(performanceView, "PerformanceBackButton", "Back", BottomBackButtonPosition, ShowMenu);
+    }
+
+    private void ShowMenu()
+    {
+        ShowOnly(menuView);
+        UpdateControlInteractivity();
+    }
+
+    private void ShowAcquireSetup()
+    {
+        ShowOnly(acquireSetupView);
+        if (acquireSubjectInput != null)
+        {
+            acquireSubjectInput.SetTextWithoutNotify(currentSubjectId);
+        }
+        UpdateControlInteractivity();
+    }
+
+    private void ShowAcquireCue()
+    {
+        ShowOnly(acquireCueView);
+        UpdateControlInteractivity();
+    }
+
+    private void ShowTrainModel()
+    {
+        ShowOnly(trainView);
+        streams?.PushCommand("query_config");
+        RebuildTrainSessionList();
+        RebuildModelToggleList();
+        UpdateControlInteractivity();
+    }
+
+    private void ShowPerformance()
+    {
+        ShowOnly(performanceView);
+        streams?.PushCommand("query_config");
+        RebuildPerformanceSessionList();
+        RebuildPerformanceList();
+        UpdateControlInteractivity();
+    }
+
+    private void ShowMainMenu()
+    {
+        screenNavigator?.ShowMainMenu();
+    }
+
+    private void ShowOnly(RectTransform view)
+    {
+        SetActive(menuView, view == menuView);
+        SetActive(acquireSetupView, view == acquireSetupView);
+        SetActive(acquireCueView, view == acquireCueView);
+        SetActive(trainView, view == trainView);
+        SetActive(performanceView, view == performanceView);
+        SetWarningText("");
+    }
+
+    private void ShowEditorPreviewView()
+    {
+        switch (editorPreviewView)
+        {
+            case CalibrationEditorPreviewView.AcquireData:
+                ShowOnly(acquireSetupView);
+                break;
+            case CalibrationEditorPreviewView.AcquireCue:
+                ShowOnly(acquireCueView);
+                SetCueText("LEFT", leftCueColor);
+                break;
+            case CalibrationEditorPreviewView.TrainModel:
+                ShowOnly(trainView);
+                RebuildTrainSessionList();
+                RebuildModelToggleList();
+                break;
+            case CalibrationEditorPreviewView.CheckPerformance:
+                ShowOnly(performanceView);
+                RebuildPerformanceSessionList();
+                RebuildPerformanceList();
+                break;
+            default:
+                ShowOnly(menuView);
+                break;
+        }
+    }
+
+    private void StartCollection()
+    {
+        if (!IsIdle())
+        {
+            SetWarningText($"Acquire ignored while service state is {serviceState}");
+            UpdateControlInteractivity();
+            return;
+        }
+        if (calibrationRoutine != null)
+        {
+            Debug.LogWarning("Collection marker sequence is already running.");
+            return;
+        }
+
+        currentSubjectId = GetSubjectIdFromInput(acquireSubjectInput);
+        selectedSessionId = "";
+        streams?.PushCommand($"start_collection:subject={currentSubjectId}");
+        serviceState = "COLLECTING";
+        UpdateCollectionProgress(0, trialsPerClass * 2);
         UpdateControlInteractivity();
         SetCueText("GET READY", readyCueColor);
-        calibrationRoutine = StartCoroutine(PublishCalibrationMarkers());
+        ShowAcquireCue();
+        calibrationRoutine = StartCoroutine(PublishCollectionMarkers());
+    }
+
+    private void AbortCollection()
+    {
+        StopLocalCollection("ABORTED");
+        streams?.PushCommand("abort_collection");
+        serviceState = "IDLE";
+        UpdateControlInteractivity();
     }
 
     private void Shutdown()
@@ -129,28 +425,70 @@ public class BciCalibrationController : MonoBehaviour
         streams?.PushCommand("shutdown");
     }
 
-    private void SaveBundle()
+    private void StopLocalCollection(string cueLabel)
     {
-        if (serviceState != "READY")
+        if (calibrationRoutine != null)
         {
-            Debug.LogWarning($"Save Bundle ignored while service state is {serviceState}");
+            StopCoroutine(calibrationRoutine);
+            calibrationRoutine = null;
+        }
+        SetCueText(cueLabel, warningColor);
+    }
+
+    private void TrainSelectedModels()
+    {
+        if (!IsIdle())
+        {
+            SetWarningText($"Train ignored while service state is {serviceState}");
+            return;
+        }
+        if (string.IsNullOrEmpty(selectedSessionId))
+        {
+            SetWarningText("Select EEG data first.");
+            return;
+        }
+
+        var selectedModels = modelToggles
+            .Where(pair => pair.Value != null && pair.Value.isOn)
+            .Select(pair => pair.Key)
+            .ToList();
+        if (selectedModels.Count == 0)
+        {
+            SetWarningText("Select at least one model.");
+            return;
+        }
+
+        string decoders = string.Join("|", selectedModels);
+        streams?.PushCommand($"train_many:session={selectedSessionId},decoders={decoders}");
+        serviceState = "TRAINING";
+        SetWarningText("");
+        UpdateControlInteractivity();
+    }
+
+    private void QueryPerformance()
+    {
+        if (!HasServiceState())
+        {
+            SetWarningText("Connect to the Python service first.");
+            UpdateControlInteractivity();
+            return;
+        }
+        if (string.IsNullOrEmpty(selectedPerformanceSessionId))
+        {
+            SetWarningText("Select EEG data first.");
             UpdateControlInteractivity();
             return;
         }
 
-        currentSubjectId = GetSubjectId();
-        streams?.PushCommand($"save_bundle:subject={currentSubjectId}");
-        SetCueText("SAVING BUNDLE", realtimeCueColor);
+        currentSubjectId = SubjectFromSessionId(selectedPerformanceSessionId);
+        performanceRecords.Clear();
+        RebuildPerformanceList();
+        performanceBestText.text = "Best: loading...";
+        streams?.PushCommand($"query_performance:subject={currentSubjectId}");
     }
 
-    private IEnumerator PublishCalibrationMarkers()
+    private IEnumerator PublishCollectionMarkers()
     {
-        // Normally service_config arrived at connect time, long before
-        // Start was clicked. This wait is just a safety net for the case
-        // where calibration is triggered before the service has answered
-        // our initial query_config (e.g. service restarted mid-session).
-        // Falls back to Inspector defaults on timeout rather than
-        // deadlocking the calibration flow.
         float waitStart = Time.realtimeSinceStartup;
         while (!serviceConfigReceived
                && Time.realtimeSinceStartup - waitStart < serviceConfigWaitSeconds)
@@ -166,46 +504,38 @@ public class BciCalibrationController : MonoBehaviour
             );
         }
 
-        var labels = BuildCalibrationLabels();
-        Debug.Log($"Calibration marker sequence started: {labels.Count} cue markers");
+        var labels = BuildCollectionLabels();
+        Debug.Log($"Collection marker sequence started: {labels.Count} cue markers");
 
         yield return new WaitForSecondsRealtime(cueSeconds);
 
         for (int index = 0; index < labels.Count; index++)
         {
             int label = labels[index];
-
-            // Cue phase: show LEFT/RIGHT. Subject starts imagining as soon as
-            // the cue appears; this first cueSeconds window is intentionally
-            // dropped from the training data (warmup) by withholding the
-            // marker until MI onset. The display does not change at the
-            // boundary ? only the LSL marker draws it.
             SetCueForMarker(label);
-            Debug.Log($"Calibration trial {index + 1}/{labels.Count} cue: marker={label}");
+            Debug.Log($"Collection trial {index + 1}/{labels.Count} cue: marker={label}");
 
             yield return new WaitForSecondsRealtime(cueSeconds);
 
-            // MI phase: marker timestamp = MI onset = start of the slice used
-            // for training. Screen stays on LEFT/RIGHT.
             streams?.PushMarker(label);
-            Debug.Log($"Calibration trial {index + 1}/{labels.Count} MI onset: marker={label}");
+            Debug.Log($"Collection trial {index + 1}/{labels.Count} MI onset: marker={label}");
 
             yield return new WaitForSecondsRealtime(motorImagerySeconds);
 
             SetCueText("REST", restCueColor);
             streams?.PushMarker(restMarker);
-            Debug.Log($"Calibration rest marker={restMarker}");
+            Debug.Log($"Collection rest marker={restMarker}");
 
             yield return new WaitForSecondsRealtime(restSeconds);
         }
 
-        Debug.Log("Calibration marker sequence complete.");
-        SetCueText("WAITING FOR TRAINING", readyCueColor);
+        Debug.Log("Collection marker sequence complete.");
+        SetCueText("WAITING", readyCueColor);
         calibrationRoutine = null;
         UpdateControlInteractivity();
     }
 
-    private List<int> BuildCalibrationLabels()
+    private List<int> BuildCollectionLabels()
     {
         int nPerClass = Mathf.Max(1, trialsPerClass);
         var labels = new List<int>(nPerClass * 2);
@@ -234,19 +564,12 @@ public class BciCalibrationController : MonoBehaviour
     {
         if (message.StartsWith("state:"))
         {
-            string nextState = message.Substring("state:".Length).Trim();
-            bool enteredCalibration = serviceState != "CALIBRATING"
-                && nextState == "CALIBRATING";
-            bool changedState = serviceState != nextState;
-
-            serviceState = nextState;
-            if (changedState)
+            serviceState = message.Substring("state:".Length).Trim();
+            if (serviceState == "DISCONNECTED")
             {
-                SetWarningText("");
-            }
-            if (enteredCalibration)
-            {
-                UpdateCalibrationProgress(0, trialsPerClass * 2);
+                StopLocalCollection("DISCONNECTED");
+                pendingUseSession = "";
+                pendingUseDecoder = "";
             }
             UpdateControlInteractivity();
         }
@@ -254,56 +577,538 @@ public class BciCalibrationController : MonoBehaviour
         {
             ParseServiceConfig(message);
         }
-        else if (message.StartsWith("calibration_progress:"))
+        else if (message.StartsWith("decoders_available:"))
+        {
+            ParseSimpleList(message, "decoders_available:", availableDecoders);
+            RebuildModelToggleList();
+        }
+        else if (message.StartsWith("sessions_available:"))
+        {
+            ParseSimpleList(message, "sessions_available:", availableSessions);
+            if (string.IsNullOrEmpty(selectedSessionId) && availableSessions.Count > 0)
+            {
+                selectedSessionId = availableSessions[availableSessions.Count - 1];
+            }
+            RebuildTrainSessionList();
+            RebuildPerformanceSessionList();
+        }
+        else if (message.StartsWith("collection_progress:"))
         {
             SetWarningText("");
-            if (TryParseCalibrationProgress(message, out int current, out int total))
+            if (TryParseProgress(message, "collection_progress:", out int current, out int total))
             {
-                UpdateCalibrationProgress(current, total);
+                UpdateCollectionProgress(current, total);
             }
         }
-        else if (message.StartsWith("calibration_done:"))
+        else if (message.StartsWith("collection_done:"))
         {
             SetWarningText("");
-            UpdateCalibrationProgress(calibrationProgressTotal, calibrationProgressTotal);
+            if (TryGetStatusValue(message, "session", out string session))
+            {
+                selectedSessionId = session;
+                if (!availableSessions.Contains(session))
+                {
+                    availableSessions.Add(session);
+                }
+            }
+            UpdateCollectionProgress(calibrationProgressTotal, calibrationProgressTotal);
+            SetCueText("", readyCueColor);
+            RebuildTrainSessionList();
+            RebuildPerformanceSessionList();
+            ShowAcquireSetup();
+        }
+        else if (message.StartsWith("training_started:"))
+        {
+            SetWarningText("");
+        }
+        else if (message.StartsWith("training_done:"))
+        {
+            if (TryGetStatusValue(message, "session", out string session))
+            {
+                selectedSessionId = session;
+            }
+            UpdateControlInteractivity();
+        }
+        else if (message.StartsWith("training_failed:"))
+        {
+            string decoder = TryGetStatusValue(message, "decoder", out string d) ? d : "?";
+            string reason = TryGetStatusValue(message, "reason", out string r) ? r : "failed";
+            SetWarningText($"{decoder}: failed {reason}");
+        }
+        else if (message.StartsWith("performance_best:"))
+        {
+            if (IsSelectedPerformanceSession(message))
+            {
+                HandlePerformanceBest(message);
+            }
+        }
+        else if (message.StartsWith("performance:"))
+        {
+            PerformanceRecord record = ParsePerformanceRecord(message);
+            if (string.IsNullOrEmpty(selectedPerformanceSessionId)
+                || record.session == selectedPerformanceSessionId)
+            {
+                performanceRecords.Add(record);
+                RebuildPerformanceList();
+            }
+        }
+        else if (message.StartsWith("performance_done:"))
+        {
+            if (performanceRecords.Count == 0)
+            {
+                performanceBestText.text = "Best: no trained models";
+            }
+            else
+            {
+                UpdateBestPerformanceFromRecords();
+            }
+            RebuildPerformanceList();
+        }
+        else if (message.StartsWith("bundle_loaded:"))
+        {
+            if (TryGetStatusValue(message, "session", out string session)
+                && TryGetStatusValue(message, "decoder", out string decoder)
+                && session == pendingUseSession
+                && decoder == pendingUseDecoder)
+            {
+                pendingUseSession = "";
+                pendingUseDecoder = "";
+                if (performanceDetailsText != null)
+                {
+                    performanceDetailsText.text = $"Selected for Realtime: {session} / {decoder}";
+                }
+            }
         }
         else if (message.StartsWith("error:"))
         {
             SetWarningText(message);
+            pendingUseSession = "";
+            pendingUseDecoder = "";
             UpdateControlInteractivity();
         }
-        else if (message.StartsWith("bundle_saved:"))
+    }
+
+    private void HandlePerformanceBest(string message)
+    {
+        string session = TryGetStatusValue(message, "session", out string s) ? s : "?";
+        string decoder = TryGetStatusValue(message, "decoder", out string d) ? d : "?";
+        string acc = TryGetStatusValue(message, "acc", out string a) ? a : "?";
+        performanceBestText.text = $"Best: {session} / {decoder}  CV Acc {acc}";
+    }
+
+    private void UpdateBestPerformanceFromRecords()
+    {
+        PerformanceRecord best = null;
+        float bestAcc = float.NegativeInfinity;
+        foreach (PerformanceRecord record in performanceRecords)
         {
-            SetWarningText("");
-            SetCueText("BUNDLE SAVED", realtimeCueColor);
-            UpdateControlInteractivity();
+            if (!float.TryParse(record.acc, NumberStyles.Float, CultureInfo.InvariantCulture, out float acc))
+            {
+                acc = float.NegativeInfinity;
+            }
+            if (best == null || acc > bestAcc)
+            {
+                best = record;
+                bestAcc = acc;
+            }
         }
-        else
+
+        if (best != null)
+        {
+            performanceBestText.text = $"Best: {best.session} / {best.decoder}  CV Acc {best.acc}";
+        }
+    }
+
+    private bool IsSelectedPerformanceSession(string message)
+    {
+        return string.IsNullOrEmpty(selectedPerformanceSessionId)
+            || (TryGetStatusValue(message, "session", out string session)
+                && session == selectedPerformanceSessionId);
+    }
+
+    private PerformanceRecord ParsePerformanceRecord(string message)
+    {
+        return new PerformanceRecord
+        {
+            session = GetStatusValueOrEmpty(message, "session"),
+            decoder = GetStatusValueOrEmpty(message, "decoder"),
+            acc = GetStatusValueOrEmpty(message, "acc"),
+            foldMin = GetStatusValueOrEmpty(message, "fold_min"),
+            foldMax = GetStatusValueOrEmpty(message, "fold_max"),
+            folds = GetStatusValueOrEmpty(message, "folds"),
+            trials = GetStatusValueOrEmpty(message, "trials"),
+            trainedAt = GetStatusValueOrEmpty(message, "trained_at"),
+            confusion = GetStatusValueOrEmpty(message, "confusion"),
+            channels = GetStatusValueOrEmpty(message, "channels"),
+            windowSamples = GetStatusValueOrEmpty(message, "window_samples"),
+            bundlePath = GetStatusValueOrEmpty(message, "bundle_path"),
+            rawDataPath = GetStatusValueOrEmpty(message, "raw_data_path"),
+            bandpass = GetStatusValueOrEmpty(message, "bandpass")
+        };
+    }
+
+    private void UsePerformanceRecord(PerformanceRecord record)
+    {
+        if (record == null || string.IsNullOrEmpty(record.session) || string.IsNullOrEmpty(record.decoder))
+        {
+            return;
+        }
+
+        pendingUseSession = record.session;
+        pendingUseDecoder = record.decoder;
+        streams?.PushCommand($"load_bundle:session={record.session},decoder={record.decoder}");
+        SetWarningText("");
+        performanceDetailsText.text = $"Loading {record.session} / {record.decoder}...";
+    }
+
+    private void ShowPerformanceDetails(PerformanceRecord record)
+    {
+        if (record == null)
+        {
+            performanceDetailsText.text = "";
+            return;
+        }
+
+        string folds = string.IsNullOrEmpty(record.folds)
+            ? "-"
+            : record.folds.Replace("|", ", ");
+        string channels = string.IsNullOrEmpty(record.channels)
+            ? "-"
+            : record.channels.Replace("|", ", ");
+        string confusion = FormatConfusion(record.confusion);
+        performanceDetailsText.text =
+            $"Session: {record.session}\n" +
+            $"Model: {record.decoder}\n" +
+            $"CV Acc: {record.acc}\n" +
+            $"Fold Acc: {folds}\n" +
+            $"Trials Used: {record.trials}\n" +
+            $"Trained At: {record.trainedAt}\n" +
+            $"Confusion: {confusion}\n" +
+            $"Channels: {channels}\n" +
+            $"Window Samples: {record.windowSamples}  Bandpass: {record.bandpass}\n" +
+            $"Bundle: {record.bundlePath}";
+    }
+
+    private string FormatConfusion(string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+        {
+            return "-";
+        }
+        return raw.Replace("|", " ").Replace(";", " / ");
+    }
+
+    private void RebuildTrainSessionList()
+    {
+        if (trainSessionDropdownButton == null || trainSessionDropdownLabel == null)
+        {
+            return;
+        }
+
+        if (availableSessions.Count == 0)
+        {
+            selectedSessionId = "";
+            trainSessionDropdownLabel.text = "No EEG Data";
+            trainSessionDropdownButton.interactable = false;
+            CloseTrainSessionDropdown();
+            return;
+        }
+
+        var sessions = availableSessions.AsEnumerable().Reverse().ToList();
+        if (string.IsNullOrEmpty(selectedSessionId) || !sessions.Contains(selectedSessionId))
+        {
+            selectedSessionId = sessions[0];
+        }
+
+        trainSessionDropdownLabel.text = selectedSessionId;
+        trainSessionDropdownButton.interactable = IsIdle();
+        if (trainSessionDropdownOpen)
+        {
+            RebuildTrainSessionOptions();
+        }
+    }
+
+    private void ToggleTrainSessionDropdown()
+    {
+        if (!IsIdle() || availableSessions.Count == 0)
         {
             UpdateControlInteractivity();
+            return;
+        }
+
+        trainSessionDropdownOpen = !trainSessionDropdownOpen;
+        if (trainSessionDropdownList != null)
+        {
+            trainSessionDropdownList.gameObject.SetActive(trainSessionDropdownOpen);
+            if (trainSessionDropdownOpen)
+            {
+                trainSessionDropdownList.SetAsLastSibling();
+            }
+        }
+        if (trainSessionDropdownOpen)
+        {
+            RebuildTrainSessionOptions();
+        }
+    }
+
+    private void CloseTrainSessionDropdown()
+    {
+        trainSessionDropdownOpen = false;
+        if (trainSessionDropdownList != null)
+        {
+            trainSessionDropdownList.gameObject.SetActive(false);
+        }
+    }
+
+    private void RebuildTrainSessionOptions()
+    {
+        if (trainSessionDropdownContent == null)
+        {
+            return;
+        }
+
+        ClearChildren(trainSessionDropdownContent);
+        var sessions = availableSessions.AsEnumerable().Reverse().ToList();
+        float itemHeight = 34.0f;
+        trainSessionDropdownContent.sizeDelta = new Vector2(0.0f, sessions.Count * itemHeight);
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            string session = sessions[i];
+            string sessionForButton = session;
+            string label = session == selectedSessionId ? "* " + session : session;
+            Button button = CreateButton(
+                trainSessionDropdownContent,
+                $"SessionOption_{i}",
+                label,
+                new Vector2(0.0f, -i * itemHeight - itemHeight * 0.5f),
+                () =>
+                {
+                    selectedSessionId = sessionForButton;
+                    trainSessionDropdownLabel.text = selectedSessionId;
+                    CloseTrainSessionDropdown();
+                    UpdateControlInteractivity();
+                },
+                new Vector2(520.0f, 30.0f),
+                13.0f
+            );
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1.0f);
+            rect.anchorMax = new Vector2(0.5f, 1.0f);
+            TMP_Text optionText = button.GetComponentInChildren<TMP_Text>();
+            if (optionText != null)
+            {
+                optionText.alignment = TextAlignmentOptions.MidlineLeft;
+            }
+        }
+    }
+
+    private void RebuildPerformanceSessionList()
+    {
+        if (performanceSessionDropdownButton == null || performanceSessionDropdownLabel == null)
+        {
+            return;
+        }
+
+        if (availableSessions.Count == 0)
+        {
+            selectedPerformanceSessionId = "";
+            performanceSessionDropdownLabel.text = "No EEG Data";
+            performanceSessionDropdownButton.interactable = false;
+            ClosePerformanceSessionDropdown();
+            return;
+        }
+
+        var sessions = availableSessions.AsEnumerable().Reverse().ToList();
+        if (string.IsNullOrEmpty(selectedPerformanceSessionId) || !sessions.Contains(selectedPerformanceSessionId))
+        {
+            selectedPerformanceSessionId = sessions[0];
+        }
+
+        performanceSessionDropdownLabel.text = selectedPerformanceSessionId;
+        performanceSessionDropdownButton.interactable = HasServiceState();
+        if (performanceSessionDropdownOpen)
+        {
+            RebuildPerformanceSessionOptions();
+        }
+    }
+
+    private void TogglePerformanceSessionDropdown()
+    {
+        if (!HasServiceState() || availableSessions.Count == 0)
+        {
+            UpdateControlInteractivity();
+            return;
+        }
+
+        performanceSessionDropdownOpen = !performanceSessionDropdownOpen;
+        if (performanceSessionDropdownList != null)
+        {
+            performanceSessionDropdownList.gameObject.SetActive(performanceSessionDropdownOpen);
+            if (performanceSessionDropdownOpen)
+            {
+                performanceSessionDropdownList.SetAsLastSibling();
+            }
+        }
+        if (performanceSessionDropdownOpen)
+        {
+            RebuildPerformanceSessionOptions();
+        }
+    }
+
+    private void ClosePerformanceSessionDropdown()
+    {
+        performanceSessionDropdownOpen = false;
+        if (performanceSessionDropdownList != null)
+        {
+            performanceSessionDropdownList.gameObject.SetActive(false);
+        }
+    }
+
+    private void RebuildPerformanceSessionOptions()
+    {
+        if (performanceSessionDropdownContent == null)
+        {
+            return;
+        }
+
+        ClearChildren(performanceSessionDropdownContent);
+        var sessions = availableSessions.AsEnumerable().Reverse().ToList();
+        float itemHeight = 34.0f;
+        performanceSessionDropdownContent.sizeDelta = new Vector2(0.0f, sessions.Count * itemHeight);
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            string session = sessions[i];
+            string sessionForButton = session;
+            string label = session == selectedPerformanceSessionId ? "* " + session : session;
+            Button button = CreateButton(
+                performanceSessionDropdownContent,
+                $"PerformanceSessionOption_{i}",
+                label,
+                new Vector2(0.0f, -i * itemHeight - itemHeight * 0.5f),
+                () =>
+                {
+                    selectedPerformanceSessionId = sessionForButton;
+                    performanceSessionDropdownLabel.text = selectedPerformanceSessionId;
+                    ClosePerformanceSessionDropdown();
+                    UpdateControlInteractivity();
+                },
+                new Vector2(370.0f, 30.0f),
+                12.0f
+            );
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1.0f);
+            rect.anchorMax = new Vector2(0.5f, 1.0f);
+            TMP_Text optionText = button.GetComponentInChildren<TMP_Text>();
+            if (optionText != null)
+            {
+                optionText.alignment = TextAlignmentOptions.MidlineLeft;
+            }
+        }
+    }
+
+    private void RebuildModelToggleList()
+    {
+        if (trainModelList == null)
+        {
+            return;
+        }
+        ClearChildren(trainModelList);
+        modelToggles.Clear();
+
+        if (availableDecoders.Count == 0)
+        {
+            string message = HasServiceState()
+                ? "No models available"
+                : "Connect to Python service";
+            CreateText(trainModelList, "NoModelsText", message, 18.0f, new Vector2(0.0f, 25.0f), new Vector2(520.0f, 34.0f));
+            UpdateControlInteractivity();
+            return;
+        }
+
+        for (int i = 0; i < availableDecoders.Count; i++)
+        {
+            string modelName = availableDecoders[i];
+            float y = 55.0f - i * 34.0f;
+            Toggle toggle = CreateToggle(trainModelList, $"ModelToggle_{modelName}", modelName, new Vector2(-140.0f, y));
+            toggle.isOn = modelName == decoderName || i == 0;
+            modelToggles[modelName] = toggle;
+        }
+    }
+
+    private void RebuildPerformanceList()
+    {
+        if (performanceList == null)
+        {
+            return;
+        }
+        ClearChildren(performanceList);
+        CreateText(performanceList, "PerformanceHeader", "Session                         Model       CV Acc   Folds       Trials", 14.0f, new Vector2(-65.0f, 105.0f), new Vector2(650.0f, 24.0f)).alignment = TextAlignmentOptions.Left;
+
+        int maxRows = Mathf.Min(performanceRecords.Count, 5);
+        for (int i = 0; i < maxRows; i++)
+        {
+            PerformanceRecord record = performanceRecords[i];
+            PerformanceRecord recordForButton = record;
+            float y = 70.0f - i * 42.0f;
+            string folds = (!string.IsNullOrEmpty(record.foldMin) && !string.IsNullOrEmpty(record.foldMax))
+                ? $"{record.foldMin}-{record.foldMax}"
+                : "-";
+            string row = $"{record.session,-28} {record.decoder,-10} {record.acc,-7} {folds,-11} {record.trials}";
+            TMP_Text rowText = CreateText(performanceList, $"PerformanceRow_{i}", row, 13.0f, new Vector2(-100.0f, y), new Vector2(560.0f, 28.0f));
+            rowText.alignment = TextAlignmentOptions.Left;
+            CreateButton(performanceList, $"UseButton_{i}", "Use", new Vector2(250.0f, y), () => UsePerformanceRecord(recordForButton), new Vector2(74.0f, 30.0f), 13.0f);
+            CreateButton(performanceList, $"DetailsButton_{i}", "Details", new Vector2(335.0f, y), () => ShowPerformanceDetails(recordForButton), new Vector2(82.0f, 30.0f), 13.0f);
         }
     }
 
     private void UpdateControlInteractivity()
     {
-        bool isIdle = serviceState == "IDLE";
-        bool isReady = serviceState == "READY";
-
-        if (startCalibrationButton != null)
+        bool idle = IsIdle();
+        bool connected = HasServiceState();
+        if (acquireStartButton != null)
         {
-            startCalibrationButton.interactable = isIdle && calibrationRoutine == null;
+            acquireStartButton.interactable = idle && calibrationRoutine == null;
         }
-
-        if (saveBundleButton != null)
+        if (trainSelectedModelsButton != null)
         {
-            saveBundleButton.interactable = isReady;
+            trainSelectedModelsButton.interactable = idle
+                && !string.IsNullOrEmpty(selectedSessionId)
+                && modelToggles.Count > 0;
         }
+        if (trainSessionDropdownButton != null)
+        {
+            trainSessionDropdownButton.interactable = idle && availableSessions.Count > 0;
+        }
+        if (showPerformanceButton != null)
+        {
+            showPerformanceButton.interactable = connected
+                && !string.IsNullOrEmpty(selectedPerformanceSessionId);
+        }
+        if (performanceSessionDropdownButton != null)
+        {
+            performanceSessionDropdownButton.interactable = connected
+                && availableSessions.Count > 0;
+        }
+    }
+
+    private bool IsIdle()
+    {
+        return serviceState == "IDLE";
+    }
+
+    private bool HasServiceState()
+    {
+        return serviceState == "IDLE"
+            || serviceState == "COLLECTING"
+            || serviceState == "TRAINING"
+            || serviceState == "READY"
+            || serviceState == "RUNNING";
     }
 
     private void ParseServiceConfig(string message)
     {
         string payload = message.Substring("service_config:".Length).Trim();
-        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var culture = CultureInfo.InvariantCulture;
         foreach (string pair in payload.Split(','))
         {
             string[] kv = pair.Split('=');
@@ -316,46 +1121,54 @@ public class BciCalibrationController : MonoBehaviour
             switch (key)
             {
                 case "cue_s":
-                    if (float.TryParse(value, System.Globalization.NumberStyles.Float, culture, out float cs))
+                    if (float.TryParse(value, NumberStyles.Float, culture, out float cs))
                     {
                         cueSeconds = cs;
                     }
                     break;
                 case "mi_s":
-                    if (float.TryParse(value, System.Globalization.NumberStyles.Float, culture, out float mis))
+                    if (float.TryParse(value, NumberStyles.Float, culture, out float mis))
                     {
                         motorImagerySeconds = mis;
                     }
                     break;
                 case "rest_s":
-                    if (float.TryParse(value, System.Globalization.NumberStyles.Float, culture, out float rs))
+                    if (float.TryParse(value, NumberStyles.Float, culture, out float rs))
                     {
                         restSeconds = rs;
                     }
                     break;
                 case "trials_per_class":
-                    if (int.TryParse(value, System.Globalization.NumberStyles.Integer, culture, out int tpc))
+                    if (int.TryParse(value, NumberStyles.Integer, culture, out int tpc))
                     {
                         trialsPerClass = tpc;
                     }
                     break;
-                // Other keys (realtime_stride_ms, window_s) are consumed
-                // by RopeChoiceInputAggregator. Ignore here.
             }
         }
         serviceConfigReceived = true;
-        UpdateCalibrationProgress(calibrationProgressCurrent, trialsPerClass * 2);
-        Debug.Log(
-            $"Received service_config: cue={cueSeconds}s mi={motorImagerySeconds}s " +
-            $"rest={restSeconds}s trials/class={trialsPerClass}"
-        );
+        UpdateCollectionProgress(calibrationProgressCurrent, trialsPerClass * 2);
     }
 
-    private bool TryParseCalibrationProgress(string message, out int current, out int total)
+    private void ParseSimpleList(string message, string prefix, List<string> target)
+    {
+        target.Clear();
+        string payload = message.Substring(prefix.Length).Trim();
+        foreach (string item in payload.Split(','))
+        {
+            string value = item.Trim();
+            if (!string.IsNullOrEmpty(value))
+            {
+                target.Add(value);
+            }
+        }
+    }
+
+    private bool TryParseProgress(string message, string prefix, out int current, out int total)
     {
         current = 0;
         total = 0;
-        string payload = message.Substring("calibration_progress:".Length).Trim();
+        string payload = message.Substring(prefix.Length).Trim();
         string[] parts = payload.Split('/');
         if (parts.Length != 2)
         {
@@ -367,7 +1180,7 @@ public class BciCalibrationController : MonoBehaviour
             && total > 0;
     }
 
-    private void UpdateCalibrationProgress(int current, int total)
+    private void UpdateCollectionProgress(int current, int total)
     {
         int safeTotal = Mathf.Max(1, total);
         int safeCurrent = Mathf.Clamp(current, 0, safeTotal);
@@ -375,31 +1188,33 @@ public class BciCalibrationController : MonoBehaviour
         calibrationProgressTotal = safeTotal;
         float ratio = Mathf.Clamp01((float)safeCurrent / safeTotal);
 
-        if (calibrationProgressFill != null)
+        if (acquireProgressFill != null)
         {
-            float trackWidth = GetRectWidth(calibrationProgressTrack, FallbackCalibrationTrackWidth);
-            calibrationProgressFill.sizeDelta = new Vector2(
-                trackWidth * ratio,
-                calibrationProgressFill.sizeDelta.y
-            );
+            float trackWidth = GetRectWidth(acquireProgressTrack, FallbackCalibrationTrackWidth);
+            acquireProgressFill.sizeDelta = new Vector2(trackWidth * ratio, acquireProgressFill.sizeDelta.y);
         }
 
-        if (calibrationProgressText != null)
+        if (acquireProgressText != null)
         {
-            calibrationProgressText.text = $"Calibration {safeCurrent} / {safeTotal}";
+            acquireProgressText.text = $"Collection {safeCurrent} / {safeTotal}";
         }
     }
 
     private void SetWarningText(string message)
     {
-        if (warningText == null)
+        if (localWarningText == null && workflowRoot != null)
+        {
+            localWarningText = CreateText(workflowRoot, "CalibrationWarningText", "", 18.0f, new Vector2(0.0f, -360.0f), new Vector2(760.0f, 34.0f));
+            localWarningText.color = warningColor;
+        }
+        if (localWarningText == null)
         {
             return;
         }
 
-        warningText.text = message;
-        warningText.color = warningColor;
-        warningText.gameObject.SetActive(!string.IsNullOrEmpty(message));
+        localWarningText.text = message;
+        localWarningText.color = warningColor;
+        localWarningText.gameObject.SetActive(!string.IsNullOrEmpty(message));
     }
 
     private void SetCueForMarker(int marker)
@@ -420,29 +1235,22 @@ public class BciCalibrationController : MonoBehaviour
 
     private void SetCueText(string text, Color color)
     {
-        if (cueText == null)
+        if (cueTaskText == null)
         {
             return;
         }
 
-        cueText.text = text;
-        cueText.color = color;
+        cueTaskText.text = text;
+        cueTaskText.color = color;
     }
 
-    private void UpdateSubjectIdFromInput(string value)
+    private string GetSubjectIdFromInput(TMP_InputField input)
     {
-        currentSubjectId = SanitizeSubjectId(value);
-        if (subjectIdInput != null && subjectIdInput.text != currentSubjectId)
+        string raw = input != null ? input.text : currentSubjectId;
+        currentSubjectId = SanitizeSubjectId(raw);
+        if (input != null && input.text != currentSubjectId)
         {
-            subjectIdInput.SetTextWithoutNotify(currentSubjectId);
-        }
-    }
-
-    private string GetSubjectId()
-    {
-        if (subjectIdInput != null)
-        {
-            UpdateSubjectIdFromInput(subjectIdInput.text);
+            input.SetTextWithoutNotify(currentSubjectId);
         }
         return currentSubjectId;
     }
@@ -471,6 +1279,46 @@ public class BciCalibrationController : MonoBehaviour
         return chars.Count == 0 ? "pc2_test" : new string(chars.ToArray());
     }
 
+    private string SubjectFromSessionId(string sessionId)
+    {
+        string value = (sessionId ?? "").Trim();
+        int split = value.IndexOf('_');
+        if (split <= 0)
+        {
+            return SanitizeSubjectId(value);
+        }
+        return SanitizeSubjectId(value.Substring(0, split));
+    }
+
+    private bool TryGetStatusValue(string message, string key, out string value)
+    {
+        value = "";
+        int payloadStart = message.IndexOf(':');
+        if (payloadStart < 0 || payloadStart + 1 >= message.Length)
+        {
+            return false;
+        }
+
+        string target = key + "=";
+        string[] pairs = message.Substring(payloadStart + 1).Split(',');
+        foreach (string rawPair in pairs)
+        {
+            string pair = rawPair.Trim();
+            if (pair.StartsWith(target))
+            {
+                value = pair.Substring(target.Length).Trim();
+                return !string.IsNullOrEmpty(value);
+            }
+        }
+
+        return false;
+    }
+
+    private string GetStatusValueOrEmpty(string message, string key)
+    {
+        return TryGetStatusValue(message, key, out string value) ? value : "";
+    }
+
     private float GetRectWidth(RectTransform rect, float fallback)
     {
         if (rect == null)
@@ -486,6 +1334,273 @@ public class BciCalibrationController : MonoBehaviour
         return Mathf.Abs(rect.sizeDelta.x) > 0.1f ? Mathf.Abs(rect.sizeDelta.x) : fallback;
     }
 
+    private RectTransform CreatePanel(Transform parent, string objectName, bool active)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(800.0f, 700.0f);
+        rect.anchoredPosition = Vector2.zero;
+        go.SetActive(active);
+        return rect;
+    }
+
+    private TMP_Text CreateText(Transform parent, string objectName, string text, float fontSize, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.fontSize = fontSize;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.raycastTarget = false;
+        var rect = tmp.rectTransform;
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        return tmp;
+    }
+
+    private Button CreateButton(Transform parent, string objectName, string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action)
+    {
+        return CreateButton(parent, objectName, label, anchoredPosition, action, new Vector2(220.0f, 52.0f), 20.0f);
+    }
+
+    private Button CreateButton(Transform parent, string objectName, string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action, Vector2 size, float fontSize)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        var image = go.AddComponent<Image>();
+        image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = image;
+        if (action != null)
+        {
+            button.onClick.AddListener(action);
+        }
+        CreateText(go.transform, $"{objectName}Text", label, fontSize, Vector2.zero, size);
+        return button;
+    }
+
+    private TMP_InputField CreateInputField(Transform parent, string objectName, string text, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        var image = go.AddComponent<Image>();
+        image.color = new Color(0.08f, 0.08f, 0.08f, 0.92f);
+        var input = go.AddComponent<TMP_InputField>();
+        input.targetGraphic = image;
+
+        var textComponent = CreateText(go.transform, "Text", text, 18.0f, Vector2.zero, size);
+        textComponent.alignment = TextAlignmentOptions.MidlineLeft;
+        textComponent.rectTransform.offsetMin = new Vector2(12.0f, 4.0f);
+        textComponent.rectTransform.offsetMax = new Vector2(-12.0f, -4.0f);
+        var placeholder = CreateText(go.transform, "Placeholder", "S001", 18.0f, Vector2.zero, size);
+        placeholder.alignment = TextAlignmentOptions.MidlineLeft;
+        placeholder.color = new Color(1.0f, 1.0f, 1.0f, 0.45f);
+        placeholder.rectTransform.offsetMin = new Vector2(12.0f, 4.0f);
+        placeholder.rectTransform.offsetMax = new Vector2(-12.0f, -4.0f);
+        input.textComponent = textComponent;
+        input.placeholder = placeholder;
+        input.text = text;
+        return input;
+    }
+
+    private RectTransform CreateScrollPanel(Transform parent, string objectName, Vector2 anchoredPosition, Vector2 size, out RectTransform content)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+
+        var image = go.AddComponent<Image>();
+        image.color = new Color(0.06f, 0.06f, 0.06f, 0.98f);
+        var scrollRect = go.AddComponent<ScrollRect>();
+
+        var viewportGo = new GameObject("Viewport", typeof(RectTransform));
+        viewportGo.transform.SetParent(go.transform, false);
+        var viewport = viewportGo.GetComponent<RectTransform>();
+        viewport.anchorMin = Vector2.zero;
+        viewport.anchorMax = Vector2.one;
+        viewport.offsetMin = Vector2.zero;
+        viewport.offsetMax = Vector2.zero;
+        var viewportImage = viewportGo.AddComponent<Image>();
+        viewportImage.color = Color.white;
+        viewportImage.raycastTarget = false;
+        viewportGo.AddComponent<Mask>().showMaskGraphic = false;
+
+        var contentGo = new GameObject("Content", typeof(RectTransform));
+        contentGo.transform.SetParent(viewport, false);
+        content = contentGo.GetComponent<RectTransform>();
+        content.anchorMin = new Vector2(0.0f, 1.0f);
+        content.anchorMax = new Vector2(1.0f, 1.0f);
+        content.pivot = new Vector2(0.5f, 1.0f);
+        content.sizeDelta = Vector2.zero;
+        content.anchoredPosition = Vector2.zero;
+
+        scrollRect.content = content;
+        scrollRect.viewport = viewport;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        return rect;
+    }
+
+    private RectTransform CreateBarTrack(Transform parent, string objectName, Vector2 size, Vector2 anchoredPosition)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        var image = go.AddComponent<Image>();
+        image.color = new Color(0.20f, 0.20f, 0.20f, 0.85f);
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    private RectTransform CreateBarFill(RectTransform parent, string objectName, Color color, Vector2 size)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.0f, 0.5f);
+        rect.anchorMax = new Vector2(0.0f, 0.5f);
+        rect.pivot = new Vector2(0.0f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = Vector2.zero;
+        var image = go.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    private Toggle CreateToggle(Transform parent, string objectName, string label, Vector2 anchoredPosition)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(360.0f, 30.0f);
+        rect.anchoredPosition = anchoredPosition;
+
+        var toggle = go.AddComponent<Toggle>();
+        var box = new GameObject("CheckmarkBox", typeof(RectTransform));
+        box.transform.SetParent(go.transform, false);
+        var boxRect = box.GetComponent<RectTransform>();
+        boxRect.anchorMin = new Vector2(0.0f, 0.5f);
+        boxRect.anchorMax = new Vector2(0.0f, 0.5f);
+        boxRect.sizeDelta = new Vector2(22.0f, 22.0f);
+        boxRect.anchoredPosition = new Vector2(12.0f, 0.0f);
+        var boxImage = box.AddComponent<Image>();
+        boxImage.color = new Color(0.18f, 0.18f, 0.18f, 0.95f);
+        toggle.targetGraphic = boxImage;
+
+        var check = new GameObject("Checkmark", typeof(RectTransform));
+        check.transform.SetParent(box.transform, false);
+        var checkRect = check.GetComponent<RectTransform>();
+        checkRect.anchorMin = Vector2.zero;
+        checkRect.anchorMax = Vector2.one;
+        checkRect.offsetMin = new Vector2(4.0f, 4.0f);
+        checkRect.offsetMax = new Vector2(-4.0f, -4.0f);
+        var checkImage = check.AddComponent<Image>();
+        checkImage.color = realtimeCueColor;
+        toggle.graphic = checkImage;
+
+        TMP_Text text = CreateText(go.transform, "Label", label, 18.0f, new Vector2(105.0f, 0.0f), new Vector2(300.0f, 28.0f));
+        text.alignment = TextAlignmentOptions.MidlineLeft;
+        return toggle;
+    }
+
+    private void ClearChildren(Transform parent)
+    {
+        for (int i = parent.childCount - 1; i >= 0; i--)
+        {
+            DestroyGameObject(parent.GetChild(i).gameObject);
+        }
+    }
+
+    private void DestroyGameObject(GameObject go)
+    {
+        if (go == null)
+        {
+            return;
+        }
+        if (Application.isPlaying)
+        {
+            Destroy(go);
+        }
+        else
+        {
+            DestroyImmediate(go);
+        }
+    }
+
+    private void SetActive(UnityEngine.Object obj, bool active)
+    {
+        if (obj is Component component)
+        {
+            component.gameObject.SetActive(active);
+        }
+        else if (obj is GameObject go)
+        {
+            go.SetActive(active);
+        }
+    }
+
+    private void SetLegacyChildActive(string objectName, bool active)
+    {
+        if (calibrationPanel == null)
+        {
+            return;
+        }
+
+        Transform target = FindChildByName(calibrationPanel, objectName);
+        if (target != null)
+        {
+            target.gameObject.SetActive(active);
+        }
+    }
+
+    private Transform FindChildByName(Transform root, string objectName)
+    {
+        if (root.name == objectName)
+        {
+            return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform found = FindChildByName(root.GetChild(i), objectName);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
     private void OnDestroy()
     {
         if (calibrationRoutine != null)
@@ -497,27 +1612,6 @@ public class BciCalibrationController : MonoBehaviour
         if (streams != null)
         {
             streams.StatusReceived -= HandleStatusMessage;
-        }
-
-        if (startCalibrationButton != null)
-        {
-            startCalibrationButton.onClick.RemoveListener(StartCalibration);
-            startCalibrationButton.interactable = true;
-        }
-
-        if (shutdownButton != null)
-        {
-            shutdownButton.onClick.RemoveListener(Shutdown);
-        }
-
-        if (saveBundleButton != null)
-        {
-            saveBundleButton.onClick.RemoveListener(SaveBundle);
-        }
-
-        if (subjectIdInput != null)
-        {
-            subjectIdInput.onEndEdit.RemoveListener(UpdateSubjectIdFromInput);
         }
     }
 }

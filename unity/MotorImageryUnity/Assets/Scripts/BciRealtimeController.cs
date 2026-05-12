@@ -16,7 +16,10 @@ public class BciRealtimeController : MonoBehaviour
     public Color realtimeCueColor = new Color(0.45f, 1.0f, 0.55f);
 
     private BciLslStreams streams;
-    private string serviceState = "";
+    private string serviceState = "DISCONNECTED";
+    private string selectedSessionId = "";
+    private string selectedDecoderName = "csp_lda";
+    private bool pendingStartAfterLoad;
     private bool initialized;
 
     private const float FallbackProbaTrackWidth = 360.0f;
@@ -62,6 +65,21 @@ public class BciRealtimeController : MonoBehaviour
 
     private void StartRealtime()
     {
+        if (serviceState == "IDLE" && !string.IsNullOrEmpty(selectedSessionId))
+        {
+            pendingStartAfterLoad = true;
+            streams?.PushCommand(
+                $"load_bundle:session={selectedSessionId},decoder={selectedDecoderName}"
+            );
+            UpdateControlInteractivity();
+            SetCueText("LOADING BUNDLE", realtimeCueColor);
+            if (realtimeHintText != null)
+            {
+                realtimeHintText.text = $"Loading {selectedSessionId} / {selectedDecoderName}";
+            }
+            return;
+        }
+
         if (serviceState != "READY")
         {
             Debug.LogWarning($"Start Realtime ignored while service state is {serviceState}");
@@ -70,6 +88,7 @@ public class BciRealtimeController : MonoBehaviour
         }
 
         streams?.PushCommand("start_realtime");
+        pendingStartAfterLoad = false;
         serviceState = "RUNNING";
         UpdateControlInteractivity();
         SetCueText("REALTIME STARTING", realtimeCueColor);
@@ -103,6 +122,78 @@ public class BciRealtimeController : MonoBehaviour
         if (message.StartsWith("state:"))
         {
             serviceState = message.Substring("state:".Length).Trim();
+            if (serviceState == "DISCONNECTED")
+            {
+                pendingStartAfterLoad = false;
+                SetCueText("DISCONNECTED", restCueColor);
+                if (realtimeHintText != null)
+                {
+                    realtimeHintText.text = "Python service disconnected";
+                }
+            }
+            UpdateControlInteractivity();
+            if (pendingStartAfterLoad && serviceState == "READY")
+            {
+                StartRealtime();
+            }
+        }
+        else if (message.StartsWith("training_done:"))
+        {
+            if (TryGetStatusValue(message, "session", out string session))
+            {
+                selectedSessionId = session;
+            }
+            if (TryGetStatusValue(message, "decoder", out string decoder))
+            {
+                selectedDecoderName = decoder;
+            }
+            if (realtimeHintText != null)
+            {
+                realtimeHintText.text = $"Bundle ready: {selectedSessionId} / {selectedDecoderName}";
+            }
+            UpdateControlInteractivity();
+        }
+        else if (message.StartsWith("bundle_loaded:"))
+        {
+            if (TryGetStatusValue(message, "session", out string session))
+            {
+                selectedSessionId = session;
+            }
+            if (TryGetStatusValue(message, "decoder", out string decoder))
+            {
+                selectedDecoderName = decoder;
+            }
+            if (realtimeHintText != null)
+            {
+                realtimeHintText.text = $"Loaded {selectedSessionId} / {selectedDecoderName}";
+            }
+            UpdateControlInteractivity();
+        }
+        else if (message.StartsWith("now_running:"))
+        {
+            string session = selectedSessionId;
+            string decoder = selectedDecoderName;
+            if (TryGetStatusValue(message, "session", out string parsedSession))
+            {
+                session = parsedSession;
+                selectedSessionId = parsedSession;
+            }
+            if (TryGetStatusValue(message, "decoder", out string parsedDecoder))
+            {
+                decoder = parsedDecoder;
+                selectedDecoderName = parsedDecoder;
+            }
+            string accText = TryGetStatusValue(message, "acc", out string acc)
+                ? $" acc={acc}"
+                : "";
+            if (realtimeHintText != null)
+            {
+                realtimeHintText.text = $"Running {session} / {decoder}{accText}";
+            }
+        }
+        else if (message.StartsWith("error:"))
+        {
+            pendingStartAfterLoad = false;
             UpdateControlInteractivity();
         }
     }
@@ -126,10 +217,13 @@ public class BciRealtimeController : MonoBehaviour
     {
         bool isReady = serviceState == "READY";
         bool isRunning = serviceState == "RUNNING";
+        bool canLoad = serviceState == "IDLE"
+            && !string.IsNullOrEmpty(selectedSessionId)
+            && !pendingStartAfterLoad;
 
         if (startRealtimeButton != null)
         {
-            startRealtimeButton.interactable = isReady;
+            startRealtimeButton.interactable = isReady || canLoad;
         }
 
         if (stopRealtimeButton != null)
@@ -169,6 +263,30 @@ public class BciRealtimeController : MonoBehaviour
 
         cueText.text = text;
         cueText.color = color;
+    }
+
+    private bool TryGetStatusValue(string message, string key, out string value)
+    {
+        value = "";
+        int payloadStart = message.IndexOf(':');
+        if (payloadStart < 0 || payloadStart + 1 >= message.Length)
+        {
+            return false;
+        }
+
+        string target = key + "=";
+        string[] pairs = message.Substring(payloadStart + 1).Split(',');
+        foreach (string rawPair in pairs)
+        {
+            string pair = rawPair.Trim();
+            if (pair.StartsWith(target))
+            {
+                value = pair.Substring(target.Length).Trim();
+                return !string.IsNullOrEmpty(value);
+            }
+        }
+
+        return false;
     }
 
     private float GetRectWidth(RectTransform rect, float fallback)

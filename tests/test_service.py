@@ -4,7 +4,8 @@ Brings up a fake EPOC X EEG outlet, a Markers outlet, a Commands
 outlet, plus Status / BCI_Proba inlets. Runs the Service in a worker
 thread and walks it through:
 
-  IDLE -> CALIBRATING -> TRAINING -> READY -> RUNNING -> READY -> shutdown
+  IDLE -> COLLECTING -> IDLE -> TRAINING -> IDLE
+       -> READY -> RUNNING -> READY -> shutdown
 
 This is slower than other unit tests (calibration timing is bounded by
 real wall-clock so the marker timestamps stay coherent with EEG).
@@ -280,25 +281,41 @@ def _make_test_bundle() -> Bundle:
         stride_samples=32,
         smoother_name="passthrough",
         smoother_params={},
-        metadata={"subject": "alice"},
+        metadata={
+            "subject": "alice",
+            "session_id": "alice_20260509T123000",
+            "decoder_name": "static",
+            "cv_acc": 0.75,
+        },
     )
 
 
 def test_parse_command_extracts_kwargs() -> None:
-    name, kw = parse_command("start_calibration:subject=A")
-    assert name == "start_calibration"
+    name, kw = parse_command("start_collection:subject=A")
+    assert name == "start_collection"
     assert kw == {"subject": "A"}
 
-    name, kw = parse_command("save_bundle:subject=Bob,note=foo")
-    assert name == "save_bundle"
-    assert kw == {"subject": "Bob", "note": "foo"}
+    name, kw = parse_command("train:session=A_20260509T123000,decoder=csp_lda")
+    assert name == "train"
+    assert kw == {"session": "A_20260509T123000", "decoder": "csp_lda"}
+
+    name, kw = parse_command("train_many:session=A_20260509T123000,decoders=csp_lda|riemann")
+    assert name == "train_many"
+    assert kw == {
+        "session": "A_20260509T123000",
+        "decoders": "csp_lda|riemann",
+    }
+
+    name, kw = parse_command("query_performance:subject=A")
+    assert name == "query_performance"
+    assert kw == {"subject": "A"}
 
     name, kw = parse_command("shutdown")
     assert name == "shutdown"
     assert kw == {}
 
 
-def test_finalize_calibration_rejects_amplitude_outlier(tmp_path: Path) -> None:
+def test_finalize_collection_rejects_amplitude_outlier(tmp_path: Path) -> None:
     cfg = _test_cfg(trials_per_class=1)
     cfg["paths"]["data_dir"] = str(tmp_path)
     svc = Service(cfg=cfg)
@@ -306,38 +323,81 @@ def test_finalize_calibration_rejects_amplitude_outlier(tmp_path: Path) -> None:
     svc.status_pub = status
     svc.eeg_rx = _BadCalibrationEEGReceiver()
     svc.preprocessing = PreprocessingConfig(fs=128.0, channel_order=["C3", "C4"])
-    svc.state = State.CALIBRATING
+    svc.collection_subject = "alice"
+    svc.collection_session_id = "alice_20260509T123000"
+    svc.collection_trial_onsets = [(0.0, 0), (1.0, 1)]
+    svc.state = State.COLLECTING
 
-    svc._finalize_calibration()
+    svc._finalize_collection()
 
     assert svc.state == State.IDLE
     joined = " | ".join(status.messages)
-    assert "error:bad_calibration_data:reason=amp_exceeded" in joined
+    assert "error:bad_collection_data:reason=amp_exceeded" in joined
     assert "state:IDLE" in joined
-    # The raw npz must be persisted even though the sanity check failed —
+    # The raw npz must be persisted even though the sanity check failed:
     # losing the recording is worse than skipping training.
-    assert svc.cal_data_path is not None and svc.cal_data_path.exists()
-    with np.load(svc.cal_data_path) as data:
+    assert (
+        svc.collection_recording_path is not None
+        and svc.collection_recording_path.exists()
+    )
+    with np.load(svc.collection_recording_path) as data:
         assert data["raw"].shape == (2, 256)
 
 
 def test_load_bundle_command_moves_service_to_ready(tmp_path: Path) -> None:
-    bundle_path = save_bundle(_make_test_bundle(), tmp_path / "alice.joblib")
-    svc = Service(cfg=_test_cfg())
+    session_id = "alice_20260509T123000"
+    bundle_path = save_bundle(
+        _make_test_bundle(), tmp_path / "bundles" / session_id / "static"
+    )
+    cfg = _test_cfg()
+    cfg["paths"]["bundles_dir"] = str(tmp_path / "bundles")
+    svc = Service(cfg=cfg)
     status = _RecordingStatusPublisher()
     svc.status_pub = status
 
-    svc._cmd_load_bundle(str(bundle_path))
+    svc._cmd_load_bundle(session=session_id, decoder="static")
 
     assert svc.state == State.READY
     assert svc.bundle is not None
     assert svc.bundle.metadata["subject"] == "alice"
+    assert bundle_path.name == "bundle.joblib"
     assert svc.window_samples == 128
     assert svc.preprocessing is not None
     assert svc.preprocessing.channel_order == ["C3", "C4"]
     joined = " | ".join(status.messages)
-    assert "bundle_loaded:subject=alice" in joined
+    assert "bundle_loaded:session=alice_20260509T123000,decoder=static" in joined
     assert "state:READY" in joined
+
+
+def test_query_performance_publishes_subject_results(tmp_path: Path) -> None:
+    session_id = "alice_20260509T123000"
+    bundle = _make_test_bundle()
+    bundle.metadata.update(
+        {
+            "cv_folds": [0.7, 0.8],
+            "cv_confusion": [[3, 1], [0, 4]],
+            "trials_used": 8,
+            "trained_at": "2026-05-09T12:30:00+00:00",
+            "logical_channels": ["C3", "C4"],
+            "window_samples": 128,
+        }
+    )
+    save_bundle(bundle, tmp_path / "bundles" / session_id / "static")
+    cfg = _test_cfg()
+    cfg["paths"]["bundles_dir"] = str(tmp_path / "bundles")
+    svc = Service(cfg=cfg)
+    status = _RecordingStatusPublisher()
+    svc.status_pub = status
+
+    svc._cmd_query_performance("alice")
+
+    joined = " | ".join(status.messages)
+    assert "performance_best:subject=alice,session=alice_20260509T123000,decoder=static,acc=0.750" in joined
+    assert "performance:session=alice_20260509T123000,decoder=static,acc=0.750" in joined
+    assert "fold_min=0.700" in joined
+    assert "fold_max=0.800" in joined
+    assert "trials=8" in joined
+    assert "performance_done:subject=alice,count=1" in joined
 
 
 def test_realtime_warmup_suppresses_proba_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -459,11 +519,11 @@ def test_service_full_lifecycle(tmp_path: pytest.TempPathFactory) -> None:
         # Drain whatever the service published before the inlet attached.
         _drain_string_inlet(status_inlet)
 
-        # ---- start_calibration ----
-        cmd_out.push_sample(["start_calibration:subject=alice"])
+        # ---- start_collection ----
+        cmd_out.push_sample(["start_collection:subject=alice"])
         time.sleep(0.6)
         cal_msgs = _drain_string_inlet(status_inlet)
-        assert any("state:CALIBRATING" in m for m in cal_msgs), cal_msgs
+        assert any("state:COLLECTING" in m for m in cal_msgs), cal_msgs
 
         # ---- emit cue + rest markers paced like Unity ----
         n_per_class = cfg["calibration"]["trials_per_class"]
@@ -482,22 +542,40 @@ def test_service_full_lifecycle(tmp_path: pytest.TempPathFactory) -> None:
             marker_out.push_sample([99], local_clock())
             time.sleep(rest_s + cue_s)
 
-        # Allow finalization (mi+rest wait inside service) + training.
-        time.sleep(mi_s + rest_s + 1.5)
-        post_train = _drain_string_inlet(status_inlet)
-        joined = " | ".join(post_train)
-        assert "calibration_done:acc=" in joined, joined
-        assert "state:READY" in joined, joined
-        assert svc.state == State.READY
+        # Allow finalization (mi+rest wait inside service).
+        time.sleep(mi_s + rest_s + 0.8)
+        post_collection = _drain_string_inlet(status_inlet)
+        collection_joined = " | ".join(post_collection)
+        assert "collection_done:session=" in collection_joined, collection_joined
+        assert "state:IDLE" in collection_joined, collection_joined
+        assert svc.state == State.IDLE
+        session_id = svc.collection_session_id
+        assert session_id is not None
 
-        # ---- save_bundle ----
-        cmd_out.push_sample(["save_bundle:subject=alice"])
+        # ---- train_many ----
+        cmd_out.push_sample([f"train_many:session={session_id},decoders=csp_lda"])
+        time.sleep(1.5)
+        train_msgs = _drain_string_inlet(status_inlet)
+        train_joined = " | ".join(train_msgs)
+        assert "training_done:session=" in train_joined, train_joined
+        assert "state:IDLE" in train_joined, train_joined
+        assert svc.state == State.IDLE
+        bundle_path = (
+            Path(cfg["paths"]["bundles_dir"])
+            / session_id
+            / "csp_lda"
+            / "bundle.joblib"
+        )
+        assert bundle_path.exists()
+
+        # ---- load_bundle ----
+        cmd_out.push_sample([f"load_bundle:session={session_id},decoder=csp_lda"])
         time.sleep(0.5)
-        save_msgs = _drain_string_inlet(status_inlet)
-        save_joined = " | ".join(save_msgs)
-        assert "bundle_saved:path=" in save_joined, save_joined
-        bundles = list(Path(cfg["paths"]["bundles_dir"]).glob("alice_*.joblib"))
-        assert len(bundles) == 1
+        load_msgs = _drain_string_inlet(status_inlet)
+        load_joined = " | ".join(load_msgs)
+        assert f"bundle_loaded:session={session_id},decoder=csp_lda" in load_joined
+        assert "state:READY" in load_joined, load_joined
+        assert svc.state == State.READY
 
         # ---- start_realtime ----
         cmd_out.push_sample(["start_realtime"])
@@ -506,6 +584,7 @@ def test_service_full_lifecycle(tmp_path: pytest.TempPathFactory) -> None:
         rt_joined = " | ".join(rt_msgs)
         assert "realtime_warming_up" in rt_joined, rt_joined
         assert "realtime_ready" in rt_joined, rt_joined
+        assert "now_running:session=" in rt_joined, rt_joined
 
         # Drain any pending proba samples published before resolve.
         proba_samples, _ = proba_inlet.pull_chunk(timeout=0.0, max_samples=128)

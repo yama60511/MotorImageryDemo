@@ -252,7 +252,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Start Calibration
+  m_text: Acquire Data
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -608,7 +608,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Save Model
+  m_text: Train Model
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1137,7 +1137,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'state: ---'
+  m_text: '  state: ---'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1233,8 +1233,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -425, y: 313}
-  m_SizeDelta: {x: 221.6125, y: 32.598}
+  m_AnchoredPosition: {x: -237, y: 363.73}
+  m_SizeDelta: {x: 474, y: 45.544}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &384409006
 GameObject:
@@ -1744,7 +1744,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Calibration 0 / 40
+  m_text: Collection 0 / 40
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -4986,15 +4986,6 @@ MonoBehaviour:
   probaIndicatorTrack: {fileID: 67652457}
   probaIndicatorThumb: {fileID: 520199752}
   realtimeHintText: {fileID: 1339566153}
-  trialsPerClass: 20
-  cueSeconds: 1
-  motorImagerySeconds: 4
-  restSeconds: 2
-  leftMarker: 0
-  rightMarker: 1
-  restMarker: 99
-  shuffleCalibrationTrials: 1
-  trialShuffleSeed: 1
 --- !u!1 &2068810057
 GameObject:
   m_ObjectHideFlags: 0

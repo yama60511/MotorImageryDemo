@@ -36,10 +36,12 @@ def main() -> int:
     )
     outlet = StreamOutlet(info)
     messages = [
-        "state:CALIBRATING",
-        "calibration_progress:0/40",
-        "calibration_progress:5/40",
-        "calibration_progress:10/40",
+        "state:COLLECTING",
+        "collection_progress:0/40",
+        "collection_progress:5/40",
+        "collection_progress:10/40",
+        "collection_done:session=S001_20260509T123000",
+        "training_done:session=S001_20260509T123000,decoder=csp_lda,acc=0.823",
         "error:test_warning",
     ]
 

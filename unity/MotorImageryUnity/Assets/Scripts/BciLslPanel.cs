@@ -2,6 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+[ExecuteAlways]
 public class BciLslPanel : MonoBehaviour
 {
     [Header("UI")]
@@ -49,8 +50,34 @@ public class BciLslPanel : MonoBehaviour
     private BciCalibrationController calibrationController;
     private BciRealtimeController realtimeController;
 
+    private void OnEnable()
+    {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            QueueEditorCalibrationPreview();
+        }
+#endif
+    }
+
+    private void OnValidate()
+    {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            QueueEditorCalibrationPreview();
+        }
+#endif
+    }
+
     private void Start()
     {
+        if (!Application.isPlaying)
+        {
+            BuildEditorCalibrationPreview();
+            return;
+        }
+
         ResolveSceneReferences();
 
         streams = EnsureComponent<BciLslStreams>();
@@ -74,10 +101,40 @@ public class BciLslPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            UnityEditor.EditorApplication.delayCall -= BuildEditorCalibrationPreview;
+            return;
+        }
+#endif
         if (streams != null)
         {
             streams.StatusReceived -= UpdateStatusText;
         }
+    }
+
+    private void BuildEditorCalibrationPreview()
+    {
+#if UNITY_EDITOR
+        if (this == null || Application.isPlaying)
+        {
+            return;
+        }
+
+        ResolveSceneReferences();
+        calibrationController = EnsureComponent<BciCalibrationController>();
+        ConfigureCalibrationController();
+        calibrationController.BuildEditorPreview(calibrationPanel);
+#endif
+    }
+
+    private void QueueEditorCalibrationPreview()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.delayCall -= BuildEditorCalibrationPreview;
+        UnityEditor.EditorApplication.delayCall += BuildEditorCalibrationPreview;
+#endif
     }
 
     private void ConfigureScreenNavigator()
@@ -93,6 +150,8 @@ public class BciLslPanel : MonoBehaviour
 
     private void ConfigureCalibrationController()
     {
+        calibrationController.calibrationPanel = calibrationPanel;
+        calibrationController.screenNavigator = screenNavigator;
         calibrationController.cueText = cueText;
         calibrationController.startCalibrationButton = startCalibrationButton;
         calibrationController.shutdownButton = shutdownButton;
@@ -197,15 +256,9 @@ public class BciLslPanel : MonoBehaviour
         WarnIfMissing(realtimePanel, nameof(realtimePanel));
         WarnIfMissing(menuCalibrationButton, nameof(menuCalibrationButton));
         WarnIfMissing(menuRealtimeButton, nameof(menuRealtimeButton));
-        WarnIfMissing(startCalibrationButton, nameof(startCalibrationButton));
         WarnIfMissing(shutdownButton, nameof(shutdownButton));
         WarnIfMissing(startRealtimeButton, nameof(startRealtimeButton));
         WarnIfMissing(stopRealtimeButton, nameof(stopRealtimeButton));
-        WarnIfMissing(saveBundleButton, nameof(saveBundleButton));
-        WarnIfMissing(subjectIdInput, nameof(subjectIdInput));
-        WarnIfMissing(calibrationProgressFill, nameof(calibrationProgressFill));
-        WarnIfMissing(calibrationProgressText, nameof(calibrationProgressText));
-        WarnIfMissing(warningText, nameof(warningText));
     }
 
     private void WarnIfMissing(UnityEngine.Object value, string fieldName)

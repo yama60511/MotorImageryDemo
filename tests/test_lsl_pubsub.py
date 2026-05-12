@@ -77,12 +77,12 @@ def test_command_receiver_pulls_strings() -> None:
         rx = CommandReceiver(stream_type=stream_type)
         rx.connect()
         time.sleep(0.3)
-        outlet.push_sample(["start_calibration:subject=A"])
+        outlet.push_sample(["start_collection:subject=A"])
         outlet.push_sample(["shutdown"])
         time.sleep(0.5)
 
         cmds = rx.pull()
-        assert cmds == ["start_calibration:subject=A", "shutdown"]
+        assert cmds == ["start_collection:subject=A", "shutdown"]
         assert rx.pull() == []
     finally:
         del outlet
@@ -151,14 +151,14 @@ def test_status_publisher_push_round_trip() -> None:
         )
         inlet.open_stream(timeout=2.0)
         time.sleep(0.3)
-        pub.push("state:CALIBRATING")
-        pub.push("calibration_progress:5/40")
+        pub.push("state:COLLECTING")
+        pub.push("collection_progress:5/40")
         time.sleep(0.5)
 
         samples, _ts = inlet.pull_chunk(timeout=0.5, max_samples=16)
         msgs = [s[0] for s in samples]
-        assert "state:CALIBRATING" in msgs
-        assert "calibration_progress:5/40" in msgs
+        assert "state:COLLECTING" in msgs
+        assert "collection_progress:5/40" in msgs
     finally:
         del pub
 

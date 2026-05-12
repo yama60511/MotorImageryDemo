@@ -65,5 +65,5 @@ logging:
 
 paths:
   bundles_dir: bundles/
-  data_dir: data/
+  data_dir: data/eeg/
   logs_dir: logs/

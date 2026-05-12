@@ -38,8 +38,8 @@ Finish Phase 8.1 to 8.3:
 - Emotiv EEG stream is visible over LSL.
 - `python -m apps.service --channels ...` connects to the real stream with the
   selected channels.
-- Unity calibration reaches `state:READY`.
-- Pressing `Save Bundle` writes `bundles/pc2_test_*.joblib`.
+- Unity data collection reaches `collection_done:session=...`.
+- Pressing `Train Model` writes `bundles/<session>/csp_lda/bundle.joblib`.
 - Trial-level GroupKFold accuracy is at least `0.60`.
 
 If accuracy is below `0.60`, Phase 8.4 starts.
@@ -199,7 +199,7 @@ Use the same channel selection that passed 8.2.
 state:IDLE
 ```
 
-6. Press `Start Calibration` in Unity.
+6. Press `Acquire Data` in Unity.
 7. Follow the cue text:
 
 - `LEFT`: imagine left-hand movement.
@@ -212,41 +212,40 @@ headset during trials if avoidable.
 8. Wait for:
 
 ```text
-Calibration 40 / 40
-state:TRAINING
-calibration_done:acc=...
-state:READY
+Collection 40 / 40
+collection_done:session=pc2_test_YYYYMMDDTHHMMSS
+state:IDLE
 ```
 
-9. Press `Save Bundle` in Unity.
+9. Press `Train Model` in Unity.
 
 Expected service log:
 
 ```text
-cmd: save_bundle {'subject': 'pc2_test'}
-status: bundle_saved:path=/Users/yutayamamura/Projects/MotorImageryDemo/bundles/pc2_test_YYYYMMDDTHHMMSSZ.joblib
+cmd: train {'session': 'pc2_test_YYYYMMDDTHHMMSS', 'decoder': 'csp_lda'}
+status: training_done:session=pc2_test_YYYYMMDDTHHMMSS,decoder=csp_lda,acc=...
 ```
 
 10. Confirm the bundle exists on PC1:
 
 ```bash
-ls bundles/pc2_test_*.joblib
+ls bundles/pc2_test_YYYYMMDDTHHMMSS/csp_lda/bundle.joblib
 ```
 
 ## Pass Criteria
 
 Phase 8.3 passes if:
 
-- Calibration reaches `state:READY`.
-- `bundle_saved:path=...pc2_test_*.joblib` appears.
-- `calibration_done:acc=...` is `0.60` or higher.
+- Collection reaches `collection_done:session=...`.
+- `training_done:session=...,decoder=csp_lda,acc=...` appears.
+- `training_done` accuracy is `0.60` or higher.
 
 Example pass:
 
 ```text
-status: calibration_done:acc=0.650
-status: state:READY
-status: bundle_saved:path=...\bundles\pc2_test_*.joblib
+status: collection_done:session=pc2_test_YYYYMMDDTHHMMSS
+status: training_done:session=pc2_test_YYYYMMDDTHHMMSS,decoder=csp_lda,acc=0.650
+status: bundles_available:pc2_test_YYYYMMDDTHHMMSS/csp_lda:0.650
 ```
 
 ## If Accuracy Is Below 0.60
@@ -255,7 +254,7 @@ This is not a code failure. Move to Phase 8.4.
 
 Record these values:
 
-- `calibration_done:acc=...`
+- `training_done:...acc=...`
 - headset/contact quality
 - whether the selected channels looked clean in `realTimePlotEmotivLSL.py`
 - whether you moved, blinked, or adjusted the headset during trials
@@ -292,7 +291,7 @@ git push origin main
 
 Send Codex:
 
-- `calibration_done:acc=...`
-- `bundle_saved:path=...`
+- `collection_done:session=...`
+- `training_done:...acc=...`
 - `git status --short`
 - any red Unity Console errors, if present
