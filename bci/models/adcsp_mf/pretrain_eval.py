@@ -79,7 +79,7 @@ def main() -> int:
 
     cfg = load_yaml(args.config)
     full_mi_s = float(cfg["calibration"]["mi_s"])
-    trial_len_s = full_mi_s - ONSET_S  # 1s→4s = 3s duration
+    trial_len_s = full_mi_s  # mi_s is the MI duration after the cue; onset_s is independent
 
     # ── Preprocess ────────────────────────────────────────────────────
     pre_cfg = build_preprocessing_config(cfg, fs=fs, channel_order=channel_order)

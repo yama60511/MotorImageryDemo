@@ -103,7 +103,7 @@ def pretrain_single(
     cfg = load_yaml(str(config_path))
     onset_s = 1.0  # skip first second after cue onset (1s → 4s)
     full_mi_s = mi_s if mi_s is not None else float(cfg["calibration"]["mi_s"])
-    trial_len_s = full_mi_s - onset_s  # epoch duration = 3s
+    trial_len_s = full_mi_s  # mi_s is the MI duration after the cue; onset_s is independent
 
     pre_cfg = build_preprocessing_config(cfg, fs=fs, channel_order=channel_order)
     pre = Preprocessor(pre_cfg)

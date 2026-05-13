@@ -72,7 +72,7 @@ def _load_session(
     channel_order = list(data["channel_order"].astype(str))
 
     full_mi_s = float(cfg["calibration"]["mi_s"])
-    trial_len_s = full_mi_s - ONSET_S
+    trial_len_s = full_mi_s  # mi_s is the MI duration after the cue; onset_s is independent
 
     pre_cfg = build_preprocessing_config(cfg, fs=fs, channel_order=channel_order)
     filtered = Preprocessor(pre_cfg).transform(raw)
