@@ -4,8 +4,10 @@ Pre-trains the source MDM on a first session, then runs stratified 5-fold CV
 on a second session.  For each fold the recentering reference (M_recenter_) is
 estimated from that fold's training trials; the source MDM is never retrained.
 
-This tests cross-session transfer: does knowledge from session 1 help classify
-session 2 after a small within-session recentering step?
+Each fold also runs a no-pretrain baseline (fresh decoder fitted only on that
+fold's session-2 training data) using the exact same split.  Comparing the two
+controls for session difficulty: if pre-training helps, the pretrained accuracy
+should be higher than the baseline on the same folds.
 
 Accepts either session folders (new format) or flat .npz files (legacy):
   --source data/Pau_20260513T055406/
@@ -141,7 +143,9 @@ def main() -> int:
                           random_state=args.seed)
     idx = np.arange(len(y_tgt))
 
-    fold_accs: list[float] = []
+    fold_accs_pretrained: list[float] = []
+    fold_accs_baseline:   list[float] = []
+
     for fold, (idx_train, idx_test) in enumerate(skf.split(idx, y_tgt), start=1):
         trials_train = trials_tgt[idx_train]
         y_train      = y_tgt[idx_train]
@@ -155,31 +159,43 @@ def main() -> int:
             trials_test, y_test, win_tgt, str_tgt
         )
 
-        # Estimate recentering reference from this fold's training trials.
-        # MDM is not retrained — only M_recenter_ is updated.
+        # ── pretrained: source MDM fixed, only recenter to this fold ──
         decoder.fit(X_train, y_train_w)
+        preds_pt = decoder.predict(X_test)
+        acc_pt = float((preds_pt == y_test_w).mean())
+        fold_accs_pretrained.append(acc_pt)
 
-        preds = decoder.predict(X_test)
-        acc = float((preds == y_test_w).mean())
-        fold_accs.append(acc)
+        # ── baseline: fresh decoder fitted only on session-2 fold data ─
+        baseline = RiemannianRecenterDecoder(metric="riemann", n_jobs=1)
+        baseline.fit(X_train, y_train_w)   # standalone mode: fits MDM + recenter
+        preds_bl = baseline.predict(X_test)
+        acc_bl = float((preds_bl == y_test_w).mean())
+        fold_accs_baseline.append(acc_bl)
+
         logger.info(
-            "Fold %d/%d — test acc: %.3f  (%d/%d windows)  "
-            "train trials=%d  test trials=%d",
-            fold, args.n_splits, acc,
-            int((preds == y_test_w).sum()), len(y_test_w),
+            "Fold %d/%d — pretrained: %.3f  baseline: %.3f  "
+            "(train trials=%d  test trials=%d)",
+            fold, args.n_splits, acc_pt, acc_bl,
             len(idx_train), len(idx_test),
         )
 
-    mean_acc = float(np.mean(fold_accs))
-    std_acc  = float(np.std(fold_accs))
+    mean_pt = float(np.mean(fold_accs_pretrained))
+    std_pt  = float(np.std(fold_accs_pretrained))
+    mean_bl = float(np.mean(fold_accs_baseline))
+    std_bl  = float(np.std(fold_accs_baseline))
 
     logger.info("═══════════════════════════════════════")
     logger.info("Subject   : %s", args.subject)
     logger.info("Source    : %s  (%d trials)", args.source, len(y_src))
     logger.info("Target    : %s  (%d trials)", args.target, len(y_tgt))
     logger.info("CV folds  : %d", args.n_splits)
-    logger.info("Per-fold  : %s", [f"{a:.3f}" for a in fold_accs])
-    logger.info("Mean acc  : %.3f ± %.3f", mean_acc, std_acc)
+    logger.info("───────────────────────────────────────")
+    logger.info("              pretrained    baseline")
+    for i, (ap, ab) in enumerate(zip(fold_accs_pretrained, fold_accs_baseline), 1):
+        logger.info("  Fold %-2d     %.3f        %.3f", i, ap, ab)
+    logger.info("───────────────────────────────────────")
+    logger.info("  Mean        %.3f±%.3f   %.3f±%.3f",
+                mean_pt, std_pt, mean_bl, std_bl)
     logger.info("═══════════════════════════════════════")
 
     return 0
