@@ -1,12 +1,16 @@
 """Evaluate CSPLDADecoder on a single subject with 5-fold cross-validation.
 
-Loads a raw .npz saved by apps/service.py, epochs from 1s to 4s after each
-cue marker, then runs stratified 5-fold CV at trial level (sliding windows are
-applied per fold, after splitting, to avoid data leakage).
+Loads a raw recording saved by apps/service.py, epochs from 1s to 4s after
+each cue marker, then runs stratified 5-fold CV at trial level (sliding
+windows are applied per fold, after splitting, to avoid data leakage).
+
+Accepts either the new session-folder format or a legacy flat .npz:
+  --npz data/Pau_20260513T055406/          (folder with recording.npz)
+  --npz data/S01_20260511T103000Z.npz      (legacy flat file)
 
 Usage (from repo root):
     python -m bci.models.csp_lda.pretrain_eval \\
-        --npz data/S01_20260511T103000Z.npz --subject S01
+        --npz data/Pau_20260513T055406/ --subject Pau
 """
 
 from __future__ import annotations
@@ -34,8 +38,12 @@ ONSET_S = 1.0   # skip first second after cue (avoids early evoked response)
 N_SPLITS = 5
 
 
+def _resolve_npz(path: Path) -> Path:
+    return path / "recording.npz" if path.is_dir() else path
+
+
 def _load_npz(path: Path):
-    data = np.load(path, allow_pickle=False)
+    data = np.load(_resolve_npz(path), allow_pickle=False)
     raw = data["raw"].astype(np.float64)
     timestamps = data["timestamps"].astype(np.float64)
     markers = list(zip(

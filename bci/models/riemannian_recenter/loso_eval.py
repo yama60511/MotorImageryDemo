@@ -9,10 +9,14 @@ For each subject as the held-out subject:
 
 Accuracy is reported per subject and as mean ± std across all subjects.
 
+Accepts either the new session-folder format or legacy flat .npz files:
+  --npz data/Pau_20260513T055406/ data/Pau_20260513T061338/
+  --npz data/S01_....npz data/S02_....npz
+
 Usage (from repo root):
     python -m bci.models.riemannian_recenter.loso_eval \\
-        --npz  data/S01_....npz data/S02_....npz data/S03_....npz \\
-        --subjects S01 S02 S03
+        --npz data/Pau_20260513T055406/ data/Pau_20260513T061338/ \\
+        --subjects Pau Pau2
 
 Notes
 -----
@@ -49,8 +53,12 @@ DEFAULT_CALIB = 10   # calibration trials for the held-out subject
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def _resolve_npz(path: Path) -> Path:
+    return path / "recording.npz" if path.is_dir() else path
+
+
 def _load_npz(path: Path):
-    data = np.load(path, allow_pickle=False)
+    data = np.load(_resolve_npz(path), allow_pickle=False)
     raw = data["raw"].astype(np.float64)
     timestamps = data["timestamps"].astype(np.float64)
     markers = list(zip(
@@ -137,7 +145,7 @@ def main() -> int:
         logger.info("Loading subject %s from %s ...", sid, npz_path)
 
         # Peek at fs to compute window/stride samples
-        data = np.load(npz_path, allow_pickle=False)
+        data = np.load(_resolve_npz(Path(npz_path)), allow_pickle=False)
         fs = float(data["fs"])
         window_samples = int(round(float(win_cfg["window_s"]) * fs))
         stride_samples = int(round(int(win_cfg["calib_stride_ms"]) / 1000.0 * fs))

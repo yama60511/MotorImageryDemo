@@ -1,12 +1,9 @@
-"""Pre-train a RiemannianRecenterDecoder on a single subject's raw .npz file.
+"""Pre-train a RiemannianRecenterDecoder on a single subject's recording.
 
-The .npz must have been saved by apps/service.py and contains:
-  raw           (n_channels, T)     raw continuous EEG
-  timestamps    (T,)                LSL timestamps
-  marker_times  (n_markers,)        cue timestamps
-  marker_labels (n_markers,)        cue labels (0=left, 1=right)
-  fs            scalar              sampling rate
-  channel_order (n_channels,)       channel names
+The recording must have been saved by apps/service.py.  Accepts either
+the new session-folder format or a legacy flat .npz:
+  --npz data/Pau_20260513T055406/          (folder with recording.npz)
+  --npz data/S01_20260511T103000Z.npz      (legacy flat file)
 
 The script preprocesses the raw data identically to the calibration
 pipeline, extracts fixed-length trials, and fits the Riemannian MDM on
@@ -19,7 +16,7 @@ The pre-trained decoder is saved to:
 
 Usage (from repo root):
     python -m bci.models.riemannian_recenter.pretrain_single \\
-        --npz data/S01_20260511T103000Z.npz --subject S01
+        --npz data/Pau_20260513T055406/ --subject Pau
 """
 
 from __future__ import annotations
@@ -46,8 +43,15 @@ logger = logging.getLogger("bci.riemannian_recenter.pretrain_single")
 PRETRAINED_DIR = Path(__file__).resolve().parent / "pretrained"
 
 
+def _resolve_npz(path: Path) -> Path:
+    return path / "recording.npz" if path.is_dir() else path
+
+
 def load_subject_npz(path: Path) -> tuple[np.ndarray, np.ndarray, list[tuple[float, int]], float, list[str]]:
-    """Load raw .npz saved by apps/service.py.
+    """Load raw recording saved by apps/service.py.
+
+    Accepts either a session folder (containing recording.npz) or a
+    direct path to a .npz file.
 
     Returns
     -------
@@ -57,7 +61,7 @@ def load_subject_npz(path: Path) -> tuple[np.ndarray, np.ndarray, list[tuple[flo
     fs            sampling rate
     channel_order list of channel names
     """
-    data = np.load(path, allow_pickle=False)
+    data = np.load(_resolve_npz(path), allow_pickle=False)
     raw = data["raw"].astype(np.float64)
     timestamps = data["timestamps"].astype(np.float64)
     marker_times = data["marker_times"].astype(np.float64)
