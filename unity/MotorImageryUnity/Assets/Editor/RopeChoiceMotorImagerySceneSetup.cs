@@ -24,6 +24,12 @@ public static class RopeChoiceMotorImagerySceneSetup
         var camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
         var canvas = FindOrCreateCanvas("Rope Choice Canvas");
 
+        if (camera != null)
+        {
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1f);
+        }
+
         EnsureEventSystem();
 
         var hudPanel = CreatePanel(canvas.transform, "HUD Panel", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-210f, -96f), new Vector2(380f, 150f), new Color(0.02f, 0.04f, 0.08f, 0.88f));
@@ -44,9 +50,22 @@ public static class RopeChoiceMotorImagerySceneSetup
         CreatePanel(startPanel.transform, "Top Accent", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -4f), new Vector2(0f, 8f), new Color(1f, 0.88f, 0.16f, 1f));
         CreateText(startPanel.transform, "Title Text", "Rope Choice", 48, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -72f), new Vector2(-36f, 70f), Color.white);
         CreateText(startPanel.transform, "Subtitle Text", "Motor Imagery Route Challenge", 22, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -126f), new Vector2(-36f, 38f), new Color(1f, 0.88f, 0.16f));
+        var circleSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/circle.svg");
+        var carSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/car.svg");
+        var flowerSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/flower.svg");
+
+        var characterPreviewImage = CreateImage(startPanel.transform, "Character Preview", circleSprite, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 64f), new Vector2(108f, 108f));
         CreateText(startPanel.transform, "Character Label", "Character", 20, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-160f, -22f), new Vector2(150f, 34f), Color.white);
         var characterDropdown = CreateDropdown(startPanel.transform, "Character Dropdown", new List<string> { "Circle", "Car", "Flower" }, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(65f, -22f), new Vector2(260f, 46f));
-        var startButton = CreateButton(startPanel.transform, "Start Button", "Start", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -178f), new Vector2(260f, 66f));
+        var startButton = CreateButton(startPanel.transform, "Start Button", "Start", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -150f), new Vector2(260f, 66f));
+        var descriptionButton = CreateButton(startPanel.transform, "Description Button", "Description", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -230f), new Vector2(260f, 56f));
+
+        var descriptionPanel = CreatePanel(canvas.transform, "Description Panel", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1040f, 580f), new Color(0.02f, 0.04f, 0.08f, 0.94f));
+        descriptionPanel.SetActive(false);
+        CreatePanel(descriptionPanel.transform, "Top Accent", new Vector2(0f, 1f), Vector2.one, new Vector2(0f, -4f), new Vector2(0f, 8f), new Color(1f, 0.88f, 0.16f, 1f));
+        CreateText(descriptionPanel.transform, "Title Text", "Description", 50, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), Vector2.one, new Vector2(0f, -76f), new Vector2(-42f, 78f), Color.white);
+        var courseImage = CreateRawImage(descriptionPanel.transform, "Course Image", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(245f, -38f), new Vector2(410f, 440f), CreateCourseDescriptionTexture(410, 440));
+        CreateText(descriptionPanel.transform, "Description Text", "なるべく短い道を選択して、\n早くGOALにたどり着こう！\n\n黄色の道：早い道\n灰色の道：遅い道\n\n「右に動こう」と思ったら\nキャラクターが右に進み、\n「左に動こう」と思ったら\n左に動きます。\n\n右と左で最短経路で進もう！", 26, FontStyle.Bold, TextAnchor.MiddleLeft, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-285f, -20f), new Vector2(480f, 420f), Color.white);
 
         var resultPanel = CreatePanel(canvas.transform, "Result Panel", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(780f, 610f), new Color(1f, 0.78f, 0.18f, 0.98f));
         var resultInnerPanel = CreatePanel(resultPanel.transform, "Result Inner Panel", Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-34f, -34f), new Color(0.02f, 0.04f, 0.08f, 0.96f));
@@ -70,20 +89,26 @@ public static class RopeChoiceMotorImagerySceneSetup
         SetSerializedObject(input, "streams", streams);
         SetSerializedObject(manager, "input", input);
         SetSerializedObject(manager, "mainCamera", camera);
+        SetSerializedColor(manager, "backgroundColor", new Color(0.01568628f, 0.03137255f, 0.07843138f, 1f));
         SetSerializedFloat(manager, "routeSpread", 2.6f);
         SetSerializedFloat(manager, "longRouteJagAmplitude", 0.42f);
         SetSerializedInt(manager, "shortRoutePointCount", 128);
         SetSerializedInt(manager, "longRoutePointCount", 192);
-        SetSerializedObject(manager, "circleSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/circle.svg"));
-        SetSerializedObject(manager, "carSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/car.svg"));
-        SetSerializedObject(manager, "flowerSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/flower.svg"));
+        SetSerializedObject(manager, "circleSprite", circleSprite);
+        SetSerializedObject(manager, "carSprite", carSprite);
+        SetSerializedObject(manager, "flowerSprite", flowerSprite);
         SetSerializedObject(manager, "hudPanel", hudPanel);
         SetSerializedObject(manager, "roundText", roundText);
         SetSerializedObject(manager, "smoothChoicesText", smoothText);
         SetSerializedObject(manager, "statusText", statusText);
         SetSerializedObject(manager, "startPanel", startPanel);
         SetSerializedObject(manager, "startButton", startButton);
+        SetSerializedObject(manager, "descriptionButton", descriptionButton);
+        SetSerializedObject(manager, "descriptionPanel", descriptionPanel);
+        SetSerializedObject(manager, "descriptionBackButton", null);
         SetSerializedObject(manager, "characterDropdown", characterDropdown);
+        SetSerializedObject(manager, "characterPreviewImage", characterPreviewImage);
+        SetSerializedObject(manager, "descriptionCourseImage", courseImage);
         SetSerializedObject(manager, "resultPanel", resultPanel);
         SetSerializedObject(manager, "resultTitleText", resultTitleText);
         SetSerializedObject(manager, "resultTimeText", resultTimeText);
@@ -232,6 +257,47 @@ public static class RopeChoiceMotorImagerySceneSetup
         return label;
     }
 
+    private static Image CreateImage(Transform parent, string objectName, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)
+    {
+        var go = FindOrCreateChild(parent, objectName);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = sizeDelta;
+
+        var image = go.GetComponent<Image>();
+        if (image == null)
+        {
+            image = go.AddComponent<Image>();
+        }
+
+        image.sprite = sprite;
+        image.color = Color.white;
+        image.preserveAspect = true;
+        return image;
+    }
+
+    private static RawImage CreateRawImage(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Texture texture)
+    {
+        var go = FindOrCreateChild(parent, objectName);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = sizeDelta;
+
+        var image = go.GetComponent<RawImage>();
+        if (image == null)
+        {
+            image = go.AddComponent<RawImage>();
+        }
+
+        image.texture = texture;
+        image.color = Color.white;
+        return image;
+    }
+
     private static Button CreateButton(Transform parent, string objectName, string labelText, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)
     {
         var go = FindOrCreateChild(parent, objectName);
@@ -297,6 +363,89 @@ public static class RopeChoiceMotorImagerySceneSetup
         dropdown.AddOptions(options);
         dropdown.RefreshShownValue();
         return dropdown;
+    }
+
+    private static Texture2D CreateCourseDescriptionTexture(int width, int height)
+    {
+        Color background = new Color(0f, 0.02f, 0.06f, 1f);
+        Color fastColor = new Color(1f, 0.88f, 0.16f, 1f);
+        Color slowColor = new Color(0.68f, 0.72f, 0.78f, 1f);
+        Color character = new Color(0.13f, 0.58f, 0.90f, 1f);
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                texture.SetPixel(x, y, background);
+            }
+        }
+
+        Vector2 start = new Vector2(width * 0.18f, height * 0.18f);
+        Vector2 goal = new Vector2(width * 0.82f, height * 0.92f);
+        DrawBezier(texture, start, new Vector2(width * 0.06f, height * 0.46f), new Vector2(width * 0.34f, height * 0.70f), goal, fastColor, 6);
+        DrawWavyPath(texture, start, goal, slowColor, 5);
+        DrawCircle(texture, start, 12, character);
+        texture.Apply();
+        return texture;
+    }
+
+    private static void DrawBezier(Texture2D texture, Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, Color color, int thickness)
+    {
+        Vector2 previous = p0;
+        for (int i = 1; i <= 160; i++)
+        {
+            float t = i / 160f;
+            Vector2 point = Mathf.Pow(1f - t, 3f) * p0
+                + 3f * Mathf.Pow(1f - t, 2f) * t * p1
+                + 3f * (1f - t) * t * t * p2
+                + t * t * t * p3;
+            DrawLine(texture, previous, point, color, thickness);
+            previous = point;
+        }
+    }
+
+    private static void DrawWavyPath(Texture2D texture, Vector2 start, Vector2 goal, Color color, int thickness)
+    {
+        Vector2 previous = start;
+        for (int i = 1; i <= 190; i++)
+        {
+            float t = i / 190f;
+            float baseX = Mathf.Lerp(start.x, goal.x, t);
+            float y = Mathf.Lerp(start.y, goal.y, t);
+            float wobble = Mathf.Sin(t * Mathf.PI * 12f) * texture.width * 0.10f * Mathf.Sin(t * Mathf.PI);
+            Vector2 point = new Vector2(baseX + wobble, y);
+            DrawLine(texture, previous, point, color, thickness);
+            previous = point;
+        }
+    }
+
+    private static void DrawLine(Texture2D texture, Vector2 a, Vector2 b, Color color, int thickness)
+    {
+        int steps = Mathf.CeilToInt(Vector2.Distance(a, b));
+        for (int i = 0; i <= steps; i++)
+        {
+            float t = steps == 0 ? 0f : i / (float)steps;
+            DrawCircle(texture, Vector2.Lerp(a, b, t), thickness, color);
+        }
+    }
+
+    private static void DrawCircle(Texture2D texture, Vector2 center, int radius, Color color)
+    {
+        int minX = Mathf.Max(0, Mathf.FloorToInt(center.x - radius));
+        int maxX = Mathf.Min(texture.width - 1, Mathf.CeilToInt(center.x + radius));
+        int minY = Mathf.Max(0, Mathf.FloorToInt(center.y - radius));
+        int maxY = Mathf.Min(texture.height - 1, Mathf.CeilToInt(center.y + radius));
+        int radiusSquared = radius * radius;
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                if ((x - center.x) * (x - center.x) + (y - center.y) * (y - center.y) <= radiusSquared)
+                {
+                    texture.SetPixel(x, y, color);
+                }
+            }
+        }
     }
 
     private static Button CreateTmpButton(Transform parent, string objectName, string labelText, Vector2 anchoredPosition, Vector2 sizeDelta)
@@ -400,6 +549,14 @@ public static class RopeChoiceMotorImagerySceneSetup
     {
         var serialized = new SerializedObject(target);
         serialized.FindProperty(propertyName).floatValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(target);
+    }
+
+    private static void SetSerializedColor(Object target, string propertyName, Color value)
+    {
+        var serialized = new SerializedObject(target);
+        serialized.FindProperty(propertyName).colorValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(target);
     }

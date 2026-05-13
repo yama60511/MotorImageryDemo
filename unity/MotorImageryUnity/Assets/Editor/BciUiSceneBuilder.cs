@@ -12,6 +12,13 @@ public static class BciUiSceneBuilder
     public static void RebuildEditableMainMenuUi()
     {
         var scene = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+        var camera = Object.FindAnyObjectByType<Camera>();
+        if (camera != null)
+        {
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1.0f);
+        }
+
         var canvas = Object.FindAnyObjectByType<Canvas>();
         if (canvas == null)
         {
@@ -90,40 +97,40 @@ public static class BciUiSceneBuilder
             realtimePanel,
             "LeftProbaText",
             "p_left: ---",
-            28.0f,
-            new Vector2(-140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            34.0f,
+            new Vector2(-230.0f, 145.0f),
+            new Vector2(360.0f, 60.0f)
         );
         var rightProbaText = CreateText(
             realtimePanel,
             "RightProbaText",
             "p_right: ---",
-            28.0f,
-            new Vector2(140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            34.0f,
+            new Vector2(230.0f, 145.0f),
+            new Vector2(360.0f, 60.0f)
         );
         var realtimeHintText = CreateText(
             realtimePanel,
             "RealtimeHintText",
             "Realtime idle",
-            24.0f,
-            new Vector2(0.0f, -175.0f),
-            new Vector2(420.0f, 44.0f)
+            30.0f,
+            new Vector2(0.0f, -42.0f),
+            new Vector2(600.0f, 56.0f)
         );
         var cueText = CreateText(
             realtimePanel,
             "RealtimeCueText",
             "",
-            44.0f,
-            new Vector2(0.0f, 210.0f),
-            new Vector2(760.0f, 80.0f)
+            66.0f,
+            new Vector2(0.0f, 250.0f),
+            new Vector2(860.0f, 110.0f)
         );
         cueText.fontStyle = FontStyles.Bold;
         var probaIndicatorTrack = CreateBarTrack(
             realtimePanel,
             "ProbaIndicatorTrack",
-            new Vector2(360.0f, 18.0f),
-            new Vector2(0.0f, -210.0f)
+            new Vector2(560.0f, 26.0f),
+            new Vector2(0.0f, -112.0f)
         );
         var probaIndicatorThumb = CreateBarThumb(
             probaIndicatorTrack,
@@ -134,19 +141,25 @@ public static class BciUiSceneBuilder
             realtimePanel,
             "StartRealtimeButton",
             "Start Realtime",
-            new Vector2(-120.0f, -250.0f)
+            new Vector2(-160.0f, -205.0f),
+            new Vector2(260.0f, 64.0f),
+            22.0f
         );
         var stopRealtimeButton = CreateButton(
             realtimePanel,
             "StopRealtimeButton",
             "Stop Realtime",
-            new Vector2(120.0f, -250.0f)
+            new Vector2(160.0f, -205.0f),
+            new Vector2(260.0f, 64.0f),
+            22.0f
         );
         var backRealtimeButton = CreateButton(
             realtimePanel,
             "BackToMenuFromRealtimeButton",
             "Back",
-            new Vector2(0.0f, -325.0f)
+            new Vector2(0.0f, -305.0f),
+            new Vector2(220.0f, 58.0f),
+            20.0f
         );
 
         panel.statusText = statusText;
@@ -239,18 +252,30 @@ public static class BciUiSceneBuilder
         Vector2 anchoredPosition
     )
     {
+        return CreateButton(parent, objectName, label, anchoredPosition, new Vector2(190.0f, 52.0f), 20.0f);
+    }
+
+    private static Button CreateButton(
+        Transform parent,
+        string objectName,
+        string label,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        float fontSize
+    )
+    {
         var go = new GameObject(objectName, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var rect = go.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(190.0f, 52.0f);
+        rect.sizeDelta = size;
         rect.anchoredPosition = anchoredPosition;
         var image = go.AddComponent<Image>();
         image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
         var button = go.AddComponent<Button>();
         button.targetGraphic = image;
-        CreateText(go.transform, $"{objectName}Text", label, 20.0f, Vector2.zero, rect.sizeDelta);
+        CreateText(go.transform, $"{objectName}Text", label, fontSize, Vector2.zero, rect.sizeDelta);
         return button;
     }
 
