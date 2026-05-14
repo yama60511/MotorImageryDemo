@@ -61,7 +61,7 @@ public class RopeChoiceGameManager : MonoBehaviour
     [SerializeField, Min(8)] private int longRoutePointCount = 192;
 
     [Header("Look")]
-    [SerializeField] private Color backgroundColor = new Color(0.05f, 0.07f, 0.11f);
+    [SerializeField] private Color backgroundColor = new Color(0.01568628f, 0.03137255f, 0.07843138f);
     [SerializeField] private Color ropeColor = new Color(0.94f, 0.96f, 1.0f);
     [SerializeField] private Color characterColor = new Color(0.20f, 0.72f, 1.0f);
     [SerializeField] private Color smoothTargetColor = new Color(1.0f, 0.88f, 0.16f);
@@ -87,6 +87,7 @@ public class RopeChoiceGameManager : MonoBehaviour
     [SerializeField] private GameObject startPanel;
     [SerializeField] private Button startButton;
     [SerializeField] private Dropdown characterDropdown;
+    [SerializeField] private Image characterPreviewImage;
     [SerializeField] private GameObject resultPanel;
     [SerializeField] private Text resultTitleText;
     [SerializeField] private Text resultTimeText;
@@ -143,6 +144,7 @@ public class RopeChoiceGameManager : MonoBehaviour
         if (characterDropdown != null)
         {
             ConfigureCharacterDropdown();
+            UpdateCharacterPreview();
             characterDropdown.onValueChanged.AddListener(HandleCharacterChanged);
         }
     }
@@ -479,6 +481,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         mainCamera.orthographic = true;
         mainCamera.orthographicSize = 5.0f;
+        mainCamera.clearFlags = CameraClearFlags.SolidColor;
         mainCamera.backgroundColor = backgroundColor;
         SetCameraY(startPosition.y + 2.1f);
     }
@@ -717,6 +720,27 @@ public class RopeChoiceGameManager : MonoBehaviour
     {
         selectedCharacter = (CharacterKind)Mathf.Clamp(value, 0, 2);
         EnsureCharacter();
+        UpdateCharacterPreview();
+    }
+
+    private void UpdateCharacterPreview()
+    {
+        if (characterPreviewImage == null && startPanel != null)
+        {
+            Transform existingPreview = startPanel.transform.Find("Character Preview");
+            characterPreviewImage = existingPreview != null
+                ? existingPreview.GetComponent<Image>()
+                : CreateCharacterPreviewImage(startPanel.transform);
+        }
+
+        if (characterPreviewImage == null)
+        {
+            return;
+        }
+
+        characterPreviewImage.sprite = GetSelectedCharacterSprite();
+        characterPreviewImage.preserveAspect = true;
+        characterPreviewImage.color = Color.white;
     }
 
     private static void EnsureDropdownTemplate(Dropdown dropdown)
@@ -778,6 +802,19 @@ public class RopeChoiceGameManager : MonoBehaviour
         }
 
         template.gameObject.SetActive(false);
+    }
+
+    private static Image CreateCharacterPreviewImage(Transform parent)
+    {
+        var go = new GameObject("Character Preview", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        ConfigureRect(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.0f, 64.0f), new Vector2(108.0f, 108.0f), new Vector2(0.5f, 0.5f));
+        var image = go.AddComponent<Image>();
+        image.color = Color.white;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        return image;
     }
 
     private static RectTransform FindOrCreateRect(Transform parent, string objectName)

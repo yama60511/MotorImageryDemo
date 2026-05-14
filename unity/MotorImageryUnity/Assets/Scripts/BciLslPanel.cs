@@ -5,6 +5,8 @@ using UnityEngine.UI;
 [ExecuteAlways]
 public class BciLslPanel : MonoBehaviour
 {
+    private static readonly Color DarkNavyBackground = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1.0f);
+
     [Header("UI")]
     public TMP_Text statusText;
     public TMP_Text leftProbaText;
@@ -79,6 +81,7 @@ public class BciLslPanel : MonoBehaviour
         }
 
         ResolveSceneReferences();
+        EnsurePanelBackgrounds();
 
         streams = EnsureComponent<BciLslStreams>();
         screenNavigator = EnsureComponent<BciScreenNavigator>();
@@ -123,6 +126,7 @@ public class BciLslPanel : MonoBehaviour
         }
 
         ResolveSceneReferences();
+        EnsurePanelBackgrounds();
         calibrationController = EnsureComponent<BciCalibrationController>();
         ConfigureCalibrationController();
         calibrationController.BuildEditorPreview(calibrationPanel);
@@ -146,6 +150,30 @@ public class BciLslPanel : MonoBehaviour
         screenNavigator.menuRealtimeButton = menuRealtimeButton;
         screenNavigator.backToMenuFromCalibrationButton = backToMenuFromCalibrationButton;
         screenNavigator.backToMenuFromRealtimeButton = backToMenuFromRealtimeButton;
+    }
+
+    private void EnsurePanelBackgrounds()
+    {
+        SetPanelBackground(mainMenuPanel);
+        SetPanelBackground(calibrationPanel);
+        SetPanelBackground(realtimePanel);
+    }
+
+    private static void SetPanelBackground(RectTransform panel)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        var image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.gameObject.AddComponent<Image>();
+        }
+
+        image.color = DarkNavyBackground;
+        image.raycastTarget = false;
     }
 
     private void ConfigureCalibrationController()

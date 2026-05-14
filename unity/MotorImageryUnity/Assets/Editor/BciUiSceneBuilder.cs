@@ -7,19 +7,40 @@ using UnityEngine.UI;
 public static class BciUiSceneBuilder
 {
     private const string MainMenuScenePath = "Assets/MainMenu.unity";
+    private static readonly Color DarkNavyBackground = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1.0f);
 
     [MenuItem("Motor Imagery/Rebuild Editable Main Menu UI")]
     public static void RebuildEditableMainMenuUi()
     {
         var scene = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+        var camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
+        if (camera != null)
+        {
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = DarkNavyBackground;
+        }
+
         var canvas = Object.FindAnyObjectByType<Canvas>();
         if (canvas == null)
         {
             var canvasGo = new GameObject("Canvas", typeof(RectTransform));
             canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasGo.AddComponent<CanvasScaler>();
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280.0f, 720.0f);
+            scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
+        }
+        else
+        {
+            var scaler = canvas.GetComponent<CanvasScaler>();
+            if (scaler != null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1280.0f, 720.0f);
+                scaler.matchWidthOrHeight = 0.5f;
+            }
         }
 
         var panel = canvas.GetComponent<BciLslPanel>();
@@ -90,40 +111,40 @@ public static class BciUiSceneBuilder
             realtimePanel,
             "LeftProbaText",
             "p_left: ---",
-            28.0f,
-            new Vector2(-140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            36.0f,
+            new Vector2(-190.0f, 145.0f),
+            new Vector2(340.0f, 58.0f)
         );
         var rightProbaText = CreateText(
             realtimePanel,
             "RightProbaText",
             "p_right: ---",
-            28.0f,
-            new Vector2(140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            36.0f,
+            new Vector2(190.0f, 145.0f),
+            new Vector2(340.0f, 58.0f)
         );
         var realtimeHintText = CreateText(
             realtimePanel,
             "RealtimeHintText",
             "Realtime idle",
-            24.0f,
+            30.0f,
             new Vector2(0.0f, -175.0f),
-            new Vector2(420.0f, 44.0f)
+            new Vector2(620.0f, 52.0f)
         );
         var cueText = CreateText(
             realtimePanel,
             "RealtimeCueText",
             "",
-            44.0f,
-            new Vector2(0.0f, 210.0f),
-            new Vector2(760.0f, 80.0f)
+            64.0f,
+            new Vector2(0.0f, 230.0f),
+            new Vector2(860.0f, 104.0f)
         );
         cueText.fontStyle = FontStyles.Bold;
         var probaIndicatorTrack = CreateBarTrack(
             realtimePanel,
             "ProbaIndicatorTrack",
-            new Vector2(360.0f, 18.0f),
-            new Vector2(0.0f, -210.0f)
+            new Vector2(560.0f, 26.0f),
+            new Vector2(0.0f, -225.0f)
         );
         var probaIndicatorThumb = CreateBarThumb(
             probaIndicatorTrack,
@@ -134,13 +155,13 @@ public static class BciUiSceneBuilder
             realtimePanel,
             "StartRealtimeButton",
             "Start Realtime",
-            new Vector2(-120.0f, -250.0f)
+            new Vector2(-155.0f, -275.0f)
         );
         var stopRealtimeButton = CreateButton(
             realtimePanel,
             "StopRealtimeButton",
             "Stop Realtime",
-            new Vector2(120.0f, -250.0f)
+            new Vector2(155.0f, -275.0f)
         );
         var backRealtimeButton = CreateButton(
             realtimePanel,
@@ -203,6 +224,9 @@ public static class BciUiSceneBuilder
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+        var image = go.AddComponent<Image>();
+        image.color = DarkNavyBackground;
+        image.raycastTarget = false;
         go.SetActive(active);
         return rect;
     }
@@ -244,13 +268,13 @@ public static class BciUiSceneBuilder
         var rect = go.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(190.0f, 52.0f);
+        rect.sizeDelta = new Vector2(230.0f, 60.0f);
         rect.anchoredPosition = anchoredPosition;
         var image = go.AddComponent<Image>();
         image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
         var button = go.AddComponent<Button>();
         button.targetGraphic = image;
-        CreateText(go.transform, $"{objectName}Text", label, 20.0f, Vector2.zero, rect.sizeDelta);
+        CreateText(go.transform, $"{objectName}Text", label, 22.0f, Vector2.zero, rect.sizeDelta);
         return button;
     }
 

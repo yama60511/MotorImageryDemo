@@ -230,47 +230,47 @@ public class BciCalibrationController : MonoBehaviour
 
     private void BuildMenuView()
     {
-        CreateText(menuView, "CalibrationMenuTitle", "Calibration", 36.0f, new Vector2(0.0f, 230.0f), new Vector2(620.0f, 54.0f));
-        CreateButton(menuView, "AcquireDataMenuButton", "Acquire Data", new Vector2(0.0f, 110.0f), ShowAcquireSetup);
-        CreateButton(menuView, "TrainModelMenuButton", "Train Model", new Vector2(0.0f, 35.0f), ShowTrainModel);
-        CreateButton(menuView, "CheckPerformanceMenuButton", "Check Performance", new Vector2(0.0f, -40.0f), ShowPerformance);
+        CreateText(menuView, "CalibrationMenuTitle", "Calibration", 46.0f, new Vector2(0.0f, 235.0f), new Vector2(720.0f, 66.0f));
+        CreateButton(menuView, "AcquireDataMenuButton", "Acquire Data", new Vector2(0.0f, 120.0f), ShowAcquireSetup, new Vector2(300.0f, 66.0f), 24.0f);
+        CreateButton(menuView, "TrainModelMenuButton", "Train Model", new Vector2(0.0f, 35.0f), ShowTrainModel, new Vector2(300.0f, 66.0f), 24.0f);
+        CreateButton(menuView, "CheckPerformanceMenuButton", "Check Performance", new Vector2(0.0f, -50.0f), ShowPerformance, new Vector2(300.0f, 66.0f), 24.0f);
         menuBackButton = CreateButton(menuView, "CalibrationMenuBackButton", "Back", BottomBackButtonPosition, ShowMainMenu);
     }
 
     private void BuildAcquireViews()
     {
-        CreateText(acquireSetupView, "AcquireTitle", "Acquire Data", 34.0f, new Vector2(0.0f, 235.0f), new Vector2(620.0f, 52.0f));
-        CreateText(acquireSetupView, "AcquireSubjectLabel", "Subject ID", 20.0f, new Vector2(-245.0f, 145.0f), new Vector2(150.0f, 34.0f));
-        acquireSubjectInput = CreateInputField(acquireSetupView, "AcquireSubjectInput", currentSubjectId, new Vector2(-30.0f, 145.0f), new Vector2(260.0f, 42.0f));
+        CreateText(acquireSetupView, "AcquireTitle", "Acquire Data", 44.0f, new Vector2(0.0f, 245.0f), new Vector2(720.0f, 62.0f));
+        CreateText(acquireSetupView, "AcquireSubjectLabel", "Subject ID", 24.0f, new Vector2(-310.0f, 145.0f), new Vector2(170.0f, 40.0f));
+        acquireSubjectInput = CreateInputField(acquireSetupView, "AcquireSubjectInput", currentSubjectId, new Vector2(-55.0f, 145.0f), new Vector2(360.0f, 54.0f));
         acquireSubjectInput.onEndEdit.AddListener(value => currentSubjectId = SanitizeSubjectId(value));
-        acquireStartButton = CreateButton(acquireSetupView, "AcquireStartButton", "Start", new Vector2(210.0f, 145.0f), StartCollection, new Vector2(120.0f, 42.0f), 18.0f);
+        acquireStartButton = CreateButton(acquireSetupView, "AcquireStartButton", "Start", new Vector2(250.0f, 145.0f), StartCollection, new Vector2(150.0f, 54.0f), 22.0f);
         CreateButton(acquireSetupView, "AcquireBackButton", "Back", BottomBackButtonPosition, ShowMenu);
 
-        CreateText(acquireCueView, "AcquireCueTitle", "Acquire Data", 26.0f, new Vector2(0.0f, 300.0f), new Vector2(620.0f, 42.0f));
-        acquireProgressText = CreateText(acquireCueView, "AcquireProgressText", "Collection 0 / 40", 22.0f, new Vector2(0.0f, -195.0f), new Vector2(520.0f, 36.0f));
-        acquireProgressTrack = CreateBarTrack(acquireCueView, "AcquireProgressTrack", new Vector2(460.0f, 18.0f), new Vector2(0.0f, -225.0f));
-        acquireProgressFill = CreateBarFill(acquireProgressTrack, "AcquireProgressFill", leftCueColor, new Vector2(0.0f, 18.0f));
-        cueTaskText = CreateText(acquireCueView, "AcquireCueText", "", 72.0f, new Vector2(0.0f, 45.0f), new Vector2(760.0f, 130.0f));
+        CreateText(acquireCueView, "AcquireCueTitle", "Acquire Data", 34.0f, new Vector2(0.0f, 300.0f), new Vector2(720.0f, 50.0f));
+        acquireProgressText = CreateText(acquireCueView, "AcquireProgressText", "Collection 0 / 40", 26.0f, new Vector2(0.0f, -195.0f), new Vector2(620.0f, 42.0f));
+        acquireProgressTrack = CreateBarTrack(acquireCueView, "AcquireProgressTrack", new Vector2(560.0f, 24.0f), new Vector2(0.0f, -230.0f));
+        acquireProgressFill = CreateBarFill(acquireProgressTrack, "AcquireProgressFill", leftCueColor, new Vector2(0.0f, 24.0f));
+        cueTaskText = CreateText(acquireCueView, "AcquireCueText", "", 86.0f, new Vector2(0.0f, 45.0f), new Vector2(860.0f, 150.0f));
         cueTaskText.fontStyle = FontStyles.Bold;
-        CreateButton(acquireCueView, "AbortCollectionButton", "Abort", new Vector2(0.0f, -285.0f), AbortCollection);
+        CreateButton(acquireCueView, "AbortCollectionButton", "Abort", new Vector2(0.0f, -295.0f), AbortCollection, new Vector2(260.0f, 60.0f), 22.0f);
     }
 
     private void BuildTrainView()
     {
-        CreateText(trainView, "TrainTitle", "Train Model", 34.0f, new Vector2(0.0f, 315.0f), new Vector2(620.0f, 52.0f));
-        CreateText(trainView, "TrainSessionLabel", "EEG Data", 18.0f, new Vector2(-290.0f, 255.0f), new Vector2(130.0f, 32.0f));
-        trainSessionDropdownButton = CreateButton(trainView, "TrainSessionDropdownButton", "No EEG Data", new Vector2(35.0f, 255.0f), ToggleTrainSessionDropdown, new Vector2(560.0f, 42.0f), 16.0f);
+        CreateText(trainView, "TrainTitle", "Train Model", 44.0f, new Vector2(0.0f, 315.0f), new Vector2(720.0f, 62.0f));
+        CreateText(trainView, "TrainSessionLabel", "EEG Data", 22.0f, new Vector2(-430.0f, 255.0f), new Vector2(150.0f, 36.0f));
+        trainSessionDropdownButton = CreateButton(trainView, "TrainSessionDropdownButton", "No EEG Data", new Vector2(30.0f, 255.0f), ToggleTrainSessionDropdown, new Vector2(620.0f, 52.0f), 18.0f);
         trainSessionDropdownLabel = trainSessionDropdownButton.GetComponentInChildren<TMP_Text>();
         if (trainSessionDropdownLabel != null)
         {
             trainSessionDropdownLabel.alignment = TextAlignmentOptions.MidlineLeft;
         }
-        trainSessionDropdownList = CreateScrollPanel(trainView, "TrainSessionDropdownList", new Vector2(35.0f, 140.0f), new Vector2(560.0f, 150.0f), out trainSessionDropdownContent);
+        trainSessionDropdownList = CreateScrollPanel(trainView, "TrainSessionDropdownList", new Vector2(30.0f, 125.0f), new Vector2(620.0f, 170.0f), out trainSessionDropdownContent);
         trainSessionDropdownList.gameObject.SetActive(false);
         trainModelList = CreatePanel(trainView, "TrainModelList", true);
-        trainModelList.sizeDelta = new Vector2(720.0f, 150.0f);
-        trainModelList.anchoredPosition = new Vector2(0.0f, 80.0f);
-        trainSelectedModelsButton = CreateButton(trainView, "TrainSelectedModelsButton", "Train Selected Models", new Vector2(0.0f, -55.0f), TrainSelectedModels);
+        trainModelList.sizeDelta = new Vector2(820.0f, 190.0f);
+        trainModelList.anchoredPosition = new Vector2(0.0f, 65.0f);
+        trainSelectedModelsButton = CreateButton(trainView, "TrainSelectedModelsButton", "Train Selected Models", new Vector2(0.0f, -80.0f), TrainSelectedModels, new Vector2(320.0f, 62.0f), 22.0f);
         CreateButton(trainView, "TrainBackButton", "Back", BottomBackButtonPosition, ShowMenu);
         RebuildTrainSessionList();
         RebuildModelToggleList();
@@ -278,22 +278,22 @@ public class BciCalibrationController : MonoBehaviour
 
     private void BuildPerformanceView()
     {
-        CreateText(performanceView, "PerformanceTitle", "Check Performance", 34.0f, new Vector2(0.0f, 320.0f), new Vector2(680.0f, 52.0f));
-        CreateText(performanceView, "PerformanceSessionLabel", "EEG Data", 18.0f, new Vector2(-290.0f, 270.0f), new Vector2(130.0f, 30.0f));
-        performanceSessionDropdownButton = CreateButton(performanceView, "PerformanceSessionDropdownButton", "No EEG Data", new Vector2(-20.0f, 270.0f), TogglePerformanceSessionDropdown, new Vector2(400.0f, 38.0f), 14.0f);
+        CreateText(performanceView, "PerformanceTitle", "Check Performance", 44.0f, new Vector2(0.0f, 320.0f), new Vector2(760.0f, 62.0f));
+        CreateText(performanceView, "PerformanceSessionLabel", "EEG Data", 22.0f, new Vector2(-430.0f, 265.0f), new Vector2(150.0f, 36.0f));
+        performanceSessionDropdownButton = CreateButton(performanceView, "PerformanceSessionDropdownButton", "No EEG Data", new Vector2(-80.0f, 265.0f), TogglePerformanceSessionDropdown, new Vector2(480.0f, 48.0f), 18.0f);
         performanceSessionDropdownLabel = performanceSessionDropdownButton.GetComponentInChildren<TMP_Text>();
         if (performanceSessionDropdownLabel != null)
         {
             performanceSessionDropdownLabel.alignment = TextAlignmentOptions.MidlineLeft;
         }
-        performanceSessionDropdownList = CreateScrollPanel(performanceView, "PerformanceSessionDropdownList", new Vector2(-20.0f, 155.0f), new Vector2(400.0f, 150.0f), out performanceSessionDropdownContent);
+        performanceSessionDropdownList = CreateScrollPanel(performanceView, "PerformanceSessionDropdownList", new Vector2(-80.0f, 140.0f), new Vector2(480.0f, 165.0f), out performanceSessionDropdownContent);
         performanceSessionDropdownList.gameObject.SetActive(false);
-        showPerformanceButton = CreateButton(performanceView, "ShowPerformanceButton", "Show Results", new Vector2(250.0f, 270.0f), QueryPerformance);
-        performanceBestText = CreateText(performanceView, "PerformanceBestText", "Best: -", 18.0f, new Vector2(0.0f, 225.0f), new Vector2(760.0f, 34.0f));
+        showPerformanceButton = CreateButton(performanceView, "ShowPerformanceButton", "Show Results", new Vector2(310.0f, 265.0f), QueryPerformance, new Vector2(220.0f, 48.0f), 18.0f);
+        performanceBestText = CreateText(performanceView, "PerformanceBestText", "Best: -", 22.0f, new Vector2(0.0f, 218.0f), new Vector2(820.0f, 38.0f));
         performanceList = CreatePanel(performanceView, "PerformanceList", true);
-        performanceList.sizeDelta = new Vector2(780.0f, 250.0f);
-        performanceList.anchoredPosition = new Vector2(0.0f, 70.0f);
-        performanceDetailsText = CreateText(performanceView, "PerformanceDetailsText", "", 15.0f, new Vector2(0.0f, -190.0f), new Vector2(780.0f, 150.0f));
+        performanceList.sizeDelta = new Vector2(900.0f, 300.0f);
+        performanceList.anchoredPosition = new Vector2(0.0f, 55.0f);
+        performanceDetailsText = CreateText(performanceView, "PerformanceDetailsText", "", 17.0f, new Vector2(0.0f, -220.0f), new Vector2(900.0f, 150.0f));
         performanceDetailsText.alignment = TextAlignmentOptions.TopLeft;
         CreateButton(performanceView, "PerformanceBackButton", "Back", BottomBackButtonPosition, ShowMenu);
     }
@@ -1020,7 +1020,7 @@ public class BciCalibrationController : MonoBehaviour
             string message = HasServiceState()
                 ? "No models available"
                 : "Connect to Python service";
-            CreateText(trainModelList, "NoModelsText", message, 18.0f, new Vector2(0.0f, 25.0f), new Vector2(520.0f, 34.0f));
+            CreateText(trainModelList, "NoModelsText", message, 22.0f, new Vector2(0.0f, 25.0f), new Vector2(620.0f, 40.0f));
             UpdateControlInteractivity();
             return;
         }
@@ -1028,8 +1028,8 @@ public class BciCalibrationController : MonoBehaviour
         for (int i = 0; i < availableDecoders.Count; i++)
         {
             string modelName = availableDecoders[i];
-            float y = 55.0f - i * 34.0f;
-            Toggle toggle = CreateToggle(trainModelList, $"ModelToggle_{modelName}", modelName, new Vector2(-140.0f, y));
+            float y = 65.0f - i * 44.0f;
+            Toggle toggle = CreateToggle(trainModelList, $"ModelToggle_{modelName}", modelName, new Vector2(-170.0f, y));
             toggle.isOn = modelName == decoderName || i == 0;
             modelToggles[modelName] = toggle;
         }
@@ -1042,22 +1042,47 @@ public class BciCalibrationController : MonoBehaviour
             return;
         }
         ClearChildren(performanceList);
-        CreateText(performanceList, "PerformanceHeader", "Session                         Model       CV Acc   Folds       Trials", 14.0f, new Vector2(-65.0f, 105.0f), new Vector2(650.0f, 24.0f)).alignment = TextAlignmentOptions.Left;
+
+        float tableWidth = 860.0f;
+        float tableHeight = 250.0f;
+        float top = 124.0f;
+        float rowHeight = 42.0f;
+        float left = -tableWidth * 0.5f;
+        float[] columnLines = { left, -235.0f, -75.0f, 40.0f, 155.0f, 245.0f, tableWidth * 0.5f };
+        for (int i = 0; i < columnLines.Length; i++)
+        {
+            CreateDivider(performanceList, $"PerformanceColumnLine_{i}", new Vector2(columnLines[i], top - tableHeight * 0.5f), new Vector2(2.0f, tableHeight));
+        }
+
+        for (int i = 0; i <= 6; i++)
+        {
+            float y = top - i * rowHeight;
+            CreateDivider(performanceList, $"PerformanceRowLine_{i}", new Vector2(0.0f, y), new Vector2(tableWidth, 2.0f));
+        }
+
+        CreateTableText(performanceList, "PerformanceHeaderSession", "Session", 17.0f, new Vector2(-330.0f, 103.0f), new Vector2(170.0f, 30.0f));
+        CreateTableText(performanceList, "PerformanceHeaderModel", "Model", 17.0f, new Vector2(-155.0f, 103.0f), new Vector2(130.0f, 30.0f));
+        CreateTableText(performanceList, "PerformanceHeaderAcc", "CV Acc", 17.0f, new Vector2(-18.0f, 103.0f), new Vector2(90.0f, 30.0f));
+        CreateTableText(performanceList, "PerformanceHeaderFolds", "Folds", 17.0f, new Vector2(98.0f, 103.0f), new Vector2(90.0f, 30.0f));
+        CreateTableText(performanceList, "PerformanceHeaderTrials", "Trials", 17.0f, new Vector2(200.0f, 103.0f), new Vector2(76.0f, 30.0f));
+        CreateTableText(performanceList, "PerformanceHeaderAction", "Action", 17.0f, new Vector2(335.0f, 103.0f), new Vector2(170.0f, 30.0f));
 
         int maxRows = Mathf.Min(performanceRecords.Count, 5);
         for (int i = 0; i < maxRows; i++)
         {
             PerformanceRecord record = performanceRecords[i];
             PerformanceRecord recordForButton = record;
-            float y = 70.0f - i * 42.0f;
+            float y = 61.0f - i * rowHeight;
             string folds = (!string.IsNullOrEmpty(record.foldMin) && !string.IsNullOrEmpty(record.foldMax))
                 ? $"{record.foldMin}-{record.foldMax}"
                 : "-";
-            string row = $"{record.session,-28} {record.decoder,-10} {record.acc,-7} {folds,-11} {record.trials}";
-            TMP_Text rowText = CreateText(performanceList, $"PerformanceRow_{i}", row, 13.0f, new Vector2(-100.0f, y), new Vector2(560.0f, 28.0f));
-            rowText.alignment = TextAlignmentOptions.Left;
-            CreateButton(performanceList, $"UseButton_{i}", "Use", new Vector2(250.0f, y), () => UsePerformanceRecord(recordForButton), new Vector2(74.0f, 30.0f), 13.0f);
-            CreateButton(performanceList, $"DetailsButton_{i}", "Details", new Vector2(335.0f, y), () => ShowPerformanceDetails(recordForButton), new Vector2(82.0f, 30.0f), 13.0f);
+            CreateTableText(performanceList, $"PerformanceSession_{i}", record.session, 15.0f, new Vector2(-330.0f, y), new Vector2(174.0f, 30.0f), TextAlignmentOptions.MidlineLeft);
+            CreateTableText(performanceList, $"PerformanceModel_{i}", record.decoder, 15.0f, new Vector2(-155.0f, y), new Vector2(130.0f, 30.0f), TextAlignmentOptions.MidlineLeft);
+            CreateTableText(performanceList, $"PerformanceAcc_{i}", record.acc, 15.0f, new Vector2(-18.0f, y), new Vector2(90.0f, 30.0f));
+            CreateTableText(performanceList, $"PerformanceFolds_{i}", folds, 15.0f, new Vector2(98.0f, y), new Vector2(90.0f, 30.0f));
+            CreateTableText(performanceList, $"PerformanceTrials_{i}", record.trials, 15.0f, new Vector2(200.0f, y), new Vector2(76.0f, 30.0f));
+            CreateButton(performanceList, $"UseButton_{i}", "Use", new Vector2(290.0f, y), () => UsePerformanceRecord(recordForButton), new Vector2(74.0f, 30.0f), 13.0f);
+            CreateButton(performanceList, $"DetailsButton_{i}", "Details", new Vector2(382.0f, y), () => ShowPerformanceDetails(recordForButton), new Vector2(82.0f, 30.0f), 13.0f);
         }
     }
 
@@ -1365,6 +1390,14 @@ public class BciCalibrationController : MonoBehaviour
         return tmp;
     }
 
+    private TMP_Text CreateTableText(Transform parent, string objectName, string text, float fontSize, Vector2 anchoredPosition, Vector2 size, TextAlignmentOptions alignment = TextAlignmentOptions.Center)
+    {
+        TMP_Text tmp = CreateText(parent, objectName, text, fontSize, anchoredPosition, size);
+        tmp.alignment = alignment;
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        return tmp;
+    }
+
     private Button CreateButton(Transform parent, string objectName, string label, Vector2 anchoredPosition, UnityEngine.Events.UnityAction action)
     {
         return CreateButton(parent, objectName, label, anchoredPosition, action, new Vector2(220.0f, 52.0f), 20.0f);
@@ -1478,6 +1511,21 @@ public class BciCalibrationController : MonoBehaviour
         return rect;
     }
 
+    private RectTransform CreateDivider(Transform parent, string objectName, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        var image = go.AddComponent<Image>();
+        image.color = new Color(1.0f, 1.0f, 1.0f, 0.78f);
+        image.raycastTarget = false;
+        return rect;
+    }
+
     private RectTransform CreateBarFill(RectTransform parent, string objectName, Color color, Vector2 size)
     {
         var go = new GameObject(objectName, typeof(RectTransform));
@@ -1501,7 +1549,7 @@ public class BciCalibrationController : MonoBehaviour
         var rect = go.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(360.0f, 30.0f);
+        rect.sizeDelta = new Vector2(420.0f, 38.0f);
         rect.anchoredPosition = anchoredPosition;
 
         var toggle = go.AddComponent<Toggle>();
@@ -1510,8 +1558,8 @@ public class BciCalibrationController : MonoBehaviour
         var boxRect = box.GetComponent<RectTransform>();
         boxRect.anchorMin = new Vector2(0.0f, 0.5f);
         boxRect.anchorMax = new Vector2(0.0f, 0.5f);
-        boxRect.sizeDelta = new Vector2(22.0f, 22.0f);
-        boxRect.anchoredPosition = new Vector2(12.0f, 0.0f);
+        boxRect.sizeDelta = new Vector2(28.0f, 28.0f);
+        boxRect.anchoredPosition = new Vector2(14.0f, 0.0f);
         var boxImage = box.AddComponent<Image>();
         boxImage.color = new Color(0.18f, 0.18f, 0.18f, 0.95f);
         toggle.targetGraphic = boxImage;
@@ -1527,7 +1575,7 @@ public class BciCalibrationController : MonoBehaviour
         checkImage.color = realtimeCueColor;
         toggle.graphic = checkImage;
 
-        TMP_Text text = CreateText(go.transform, "Label", label, 18.0f, new Vector2(105.0f, 0.0f), new Vector2(300.0f, 28.0f));
+        TMP_Text text = CreateText(go.transform, "Label", label, 21.0f, new Vector2(125.0f, 0.0f), new Vector2(340.0f, 34.0f));
         text.alignment = TextAlignmentOptions.MidlineLeft;
         return toggle;
     }

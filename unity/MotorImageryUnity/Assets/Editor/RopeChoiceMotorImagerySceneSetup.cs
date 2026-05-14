@@ -12,6 +12,7 @@ public static class RopeChoiceMotorImagerySceneSetup
 {
     private const string MainMenuScenePath = "Assets/MainMenu.unity";
     private const string GameScenePath = "Assets/Scenes/Game_Scene.unity";
+    private static readonly Color DarkNavyBackground = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1f);
 
     [MenuItem("Motor Imagery/Rope Choice/Setup Game Scene")]
     public static void SetupGameScene()
@@ -23,6 +24,11 @@ public static class RopeChoiceMotorImagerySceneSetup
         var manager = FindOrCreateComponent<RopeChoiceGameManager>("Rope Choice Game Manager");
         var camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
         var canvas = FindOrCreateCanvas("Rope Choice Canvas");
+        if (camera != null)
+        {
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = DarkNavyBackground;
+        }
 
         EnsureEventSystem();
 
@@ -31,7 +37,7 @@ public static class RopeChoiceMotorImagerySceneSetup
         var roundText = CreateText(hudPanel.transform, "Round Text", "Stage 1 / 8", 28, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -34f), new Vector2(-24f, 38f), Color.white);
         var smoothText = CreateText(hudPanel.transform, "Smooth Choices Text", "Smooth 0 / 8", 22, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -78f), new Vector2(-24f, 32f), new Color(1f, 0.88f, 0.16f));
         var statusText = CreateText(hudPanel.transform, "Status Text", "Waiting", 21, FontStyle.Normal, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -114f), new Vector2(-24f, 30f), Color.white);
-        var backButton = CreateButton(canvas.transform, "Back Button", "BACK", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(180f, -56f), new Vector2(210f, 58f));
+        var backButton = CreateButton(canvas.transform, "Back Button", "BACK", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 54f), new Vector2(220f, 58f));
         var backLoader = backButton.GetComponent<LoadSceneButton>();
         if (backLoader == null)
         {
@@ -44,6 +50,10 @@ public static class RopeChoiceMotorImagerySceneSetup
         CreatePanel(startPanel.transform, "Top Accent", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -4f), new Vector2(0f, 8f), new Color(1f, 0.88f, 0.16f, 1f));
         CreateText(startPanel.transform, "Title Text", "Rope Choice", 48, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -72f), new Vector2(-36f, 70f), Color.white);
         CreateText(startPanel.transform, "Subtitle Text", "Motor Imagery Route Challenge", 22, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -126f), new Vector2(-36f, 38f), new Color(1f, 0.88f, 0.16f));
+        var circleSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/circle.svg");
+        var carSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/car.svg");
+        var flowerSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/flower.svg");
+        var characterPreviewImage = CreateImage(startPanel.transform, "Character Preview", circleSprite, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 64f), new Vector2(108f, 108f));
         CreateText(startPanel.transform, "Character Label", "Character", 20, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-160f, -22f), new Vector2(150f, 34f), Color.white);
         var characterDropdown = CreateDropdown(startPanel.transform, "Character Dropdown", new List<string> { "Circle", "Car", "Flower" }, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(65f, -22f), new Vector2(260f, 46f));
         var startButton = CreateButton(startPanel.transform, "Start Button", "Start", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -178f), new Vector2(260f, 66f));
@@ -70,13 +80,14 @@ public static class RopeChoiceMotorImagerySceneSetup
         SetSerializedObject(input, "streams", streams);
         SetSerializedObject(manager, "input", input);
         SetSerializedObject(manager, "mainCamera", camera);
+        SetSerializedColor(manager, "backgroundColor", DarkNavyBackground);
         SetSerializedFloat(manager, "routeSpread", 2.6f);
         SetSerializedFloat(manager, "longRouteJagAmplitude", 0.42f);
         SetSerializedInt(manager, "shortRoutePointCount", 128);
         SetSerializedInt(manager, "longRoutePointCount", 192);
-        SetSerializedObject(manager, "circleSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/circle.svg"));
-        SetSerializedObject(manager, "carSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/car.svg"));
-        SetSerializedObject(manager, "flowerSprite", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/flower.svg"));
+        SetSerializedObject(manager, "circleSprite", circleSprite);
+        SetSerializedObject(manager, "carSprite", carSprite);
+        SetSerializedObject(manager, "flowerSprite", flowerSprite);
         SetSerializedObject(manager, "hudPanel", hudPanel);
         SetSerializedObject(manager, "roundText", roundText);
         SetSerializedObject(manager, "smoothChoicesText", smoothText);
@@ -84,6 +95,7 @@ public static class RopeChoiceMotorImagerySceneSetup
         SetSerializedObject(manager, "startPanel", startPanel);
         SetSerializedObject(manager, "startButton", startButton);
         SetSerializedObject(manager, "characterDropdown", characterDropdown);
+        SetSerializedObject(manager, "characterPreviewImage", characterPreviewImage);
         SetSerializedObject(manager, "resultPanel", resultPanel);
         SetSerializedObject(manager, "resultTitleText", resultTitleText);
         SetSerializedObject(manager, "resultTimeText", resultTimeText);
@@ -230,6 +242,28 @@ public static class RopeChoiceMotorImagerySceneSetup
         label.color = color;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static Image CreateImage(Transform parent, string objectName, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)
+    {
+        var go = FindOrCreateChild(parent, objectName);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = sizeDelta;
+
+        var image = go.GetComponent<Image>();
+        if (image == null)
+        {
+            image = go.AddComponent<Image>();
+        }
+
+        image.sprite = sprite;
+        image.color = Color.white;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        return image;
     }
 
     private static Button CreateButton(Transform parent, string objectName, string labelText, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)
@@ -400,6 +434,14 @@ public static class RopeChoiceMotorImagerySceneSetup
     {
         var serialized = new SerializedObject(target);
         serialized.FindProperty(propertyName).floatValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(target);
+    }
+
+    private static void SetSerializedColor(Object target, string propertyName, Color value)
+    {
+        var serialized = new SerializedObject(target);
+        serialized.FindProperty(propertyName).colorValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(target);
     }
