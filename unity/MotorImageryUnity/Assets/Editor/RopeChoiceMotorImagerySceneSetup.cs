@@ -53,7 +53,6 @@ public static class RopeChoiceMotorImagerySceneSetup
         var circleSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/circle.svg");
         var carSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/car.svg");
         var flowerSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/CharacterAssets/flower.svg");
-        var characterPreviewImage = CreateImage(startPanel.transform, "Character Preview", circleSprite, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 64f), new Vector2(108f, 108f));
         CreateText(startPanel.transform, "Character Label", "Character", 20, FontStyle.Bold, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-160f, -22f), new Vector2(150f, 34f), Color.white);
         var characterDropdown = CreateDropdown(startPanel.transform, "Character Dropdown", new List<string> { "Circle", "Car", "Flower" }, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(65f, -22f), new Vector2(260f, 46f));
         var startButton = CreateButton(startPanel.transform, "Start Button", "Start", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -178f), new Vector2(260f, 66f));
@@ -95,7 +94,6 @@ public static class RopeChoiceMotorImagerySceneSetup
         SetSerializedObject(manager, "startPanel", startPanel);
         SetSerializedObject(manager, "startButton", startButton);
         SetSerializedObject(manager, "characterDropdown", characterDropdown);
-        SetSerializedObject(manager, "characterPreviewImage", characterPreviewImage);
         SetSerializedObject(manager, "resultPanel", resultPanel);
         SetSerializedObject(manager, "resultTitleText", resultTitleText);
         SetSerializedObject(manager, "resultTimeText", resultTimeText);
@@ -174,7 +172,7 @@ public static class RopeChoiceMotorImagerySceneSetup
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         var scaler = canvas.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.referenceResolution = new Vector2(2160f, 1215f);
         scaler.matchWidthOrHeight = 0.5f;
         return canvas;
     }
@@ -242,28 +240,6 @@ public static class RopeChoiceMotorImagerySceneSetup
         label.color = color;
         label.raycastTarget = false;
         return label;
-    }
-
-    private static Image CreateImage(Transform parent, string objectName, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)
-    {
-        var go = FindOrCreateChild(parent, objectName);
-        var rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = sizeDelta;
-
-        var image = go.GetComponent<Image>();
-        if (image == null)
-        {
-            image = go.AddComponent<Image>();
-        }
-
-        image.sprite = sprite;
-        image.color = Color.white;
-        image.preserveAspect = true;
-        image.raycastTarget = false;
-        return image;
     }
 
     private static Button CreateButton(Transform parent, string objectName, string labelText, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta)

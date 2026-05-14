@@ -28,7 +28,7 @@ public static class BciUiSceneBuilder
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1280.0f, 720.0f);
+            scaler.referenceResolution = new Vector2(1440.0f, 810.0f);
             scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
         }
@@ -38,7 +38,7 @@ public static class BciUiSceneBuilder
             if (scaler != null)
             {
                 scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1280.0f, 720.0f);
+                scaler.referenceResolution = new Vector2(1440.0f, 810.0f);
                 scaler.matchWidthOrHeight = 0.5f;
             }
         }

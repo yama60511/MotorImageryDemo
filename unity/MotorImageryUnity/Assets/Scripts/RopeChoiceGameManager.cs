@@ -87,7 +87,6 @@ public class RopeChoiceGameManager : MonoBehaviour
     [SerializeField] private GameObject startPanel;
     [SerializeField] private Button startButton;
     [SerializeField] private Dropdown characterDropdown;
-    [SerializeField] private Image characterPreviewImage;
     [SerializeField] private GameObject resultPanel;
     [SerializeField] private Text resultTitleText;
     [SerializeField] private Text resultTimeText;
@@ -144,7 +143,6 @@ public class RopeChoiceGameManager : MonoBehaviour
         if (characterDropdown != null)
         {
             ConfigureCharacterDropdown();
-            UpdateCharacterPreview();
             characterDropdown.onValueChanged.AddListener(HandleCharacterChanged);
         }
     }
@@ -720,32 +718,11 @@ public class RopeChoiceGameManager : MonoBehaviour
     {
         selectedCharacter = (CharacterKind)Mathf.Clamp(value, 0, 2);
         EnsureCharacter();
-        UpdateCharacterPreview();
-    }
-
-    private void UpdateCharacterPreview()
-    {
-        if (characterPreviewImage == null && startPanel != null)
-        {
-            Transform existingPreview = startPanel.transform.Find("Character Preview");
-            characterPreviewImage = existingPreview != null
-                ? existingPreview.GetComponent<Image>()
-                : CreateCharacterPreviewImage(startPanel.transform);
-        }
-
-        if (characterPreviewImage == null)
-        {
-            return;
-        }
-
-        characterPreviewImage.sprite = GetSelectedCharacterSprite();
-        characterPreviewImage.preserveAspect = true;
-        characterPreviewImage.color = Color.white;
     }
 
     private static void EnsureDropdownTemplate(Dropdown dropdown)
     {
-        if (dropdown == null || (dropdown.template != null && dropdown.itemText != null))
+        if (dropdown == null)
         {
             return;
         }
@@ -766,6 +743,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         RectTransform content = FindOrCreateRect(viewport, "Content");
         ConfigureRect(content, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0.5f, 1f));
+        content.sizeDelta = new Vector2(0f, 108f);
 
         RectTransform item = FindOrCreateRect(content, "Item");
         ConfigureRect(item, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -18f), new Vector2(0f, 36f), new Vector2(0.5f, 1f));
@@ -798,23 +776,10 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         if (root != null && root.sizeDelta.y > 0f)
         {
-            template.sizeDelta = new Vector2(template.sizeDelta.x, root.sizeDelta.y * 3f);
+            template.sizeDelta = new Vector2(template.sizeDelta.x, root.sizeDelta.y * 3.3f);
         }
 
         template.gameObject.SetActive(false);
-    }
-
-    private static Image CreateCharacterPreviewImage(Transform parent)
-    {
-        var go = new GameObject("Character Preview", typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        var rect = go.GetComponent<RectTransform>();
-        ConfigureRect(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.0f, 64.0f), new Vector2(108.0f, 108.0f), new Vector2(0.5f, 0.5f));
-        var image = go.AddComponent<Image>();
-        image.color = Color.white;
-        image.preserveAspect = true;
-        image.raycastTarget = false;
-        return image;
     }
 
     private static RectTransform FindOrCreateRect(Transform parent, string objectName)
