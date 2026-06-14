@@ -2,8 +2,11 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
+[ExecuteAlways]
 public class BciLslPanel : MonoBehaviour
 {
+    private static readonly Color DarkNavyBackground = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1.0f);
+
     [Header("UI")]
     public TMP_Text statusText;
     public TMP_Text leftProbaText;
@@ -49,9 +52,36 @@ public class BciLslPanel : MonoBehaviour
     private BciCalibrationController calibrationController;
     private BciRealtimeController realtimeController;
 
+    private void OnEnable()
+    {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            QueueEditorCalibrationPreview();
+        }
+#endif
+    }
+
+    private void OnValidate()
+    {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            QueueEditorCalibrationPreview();
+        }
+#endif
+    }
+
     private void Start()
     {
+        if (!Application.isPlaying)
+        {
+            BuildEditorCalibrationPreview();
+            return;
+        }
+
         ResolveSceneReferences();
+        EnsurePanelBackgrounds();
 
         streams = EnsureComponent<BciLslStreams>();
         screenNavigator = EnsureComponent<BciScreenNavigator>();
@@ -74,10 +104,41 @@ public class BciLslPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            UnityEditor.EditorApplication.delayCall -= BuildEditorCalibrationPreview;
+            return;
+        }
+#endif
         if (streams != null)
         {
             streams.StatusReceived -= UpdateStatusText;
         }
+    }
+
+    private void BuildEditorCalibrationPreview()
+    {
+#if UNITY_EDITOR
+        if (this == null || Application.isPlaying)
+        {
+            return;
+        }
+
+        ResolveSceneReferences();
+        EnsurePanelBackgrounds();
+        calibrationController = EnsureComponent<BciCalibrationController>();
+        ConfigureCalibrationController();
+        calibrationController.BuildEditorPreview(calibrationPanel);
+#endif
+    }
+
+    private void QueueEditorCalibrationPreview()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.delayCall -= BuildEditorCalibrationPreview;
+        UnityEditor.EditorApplication.delayCall += BuildEditorCalibrationPreview;
+#endif
     }
 
     private void ConfigureScreenNavigator()
@@ -91,8 +152,34 @@ public class BciLslPanel : MonoBehaviour
         screenNavigator.backToMenuFromRealtimeButton = backToMenuFromRealtimeButton;
     }
 
+    private void EnsurePanelBackgrounds()
+    {
+        SetPanelBackground(mainMenuPanel);
+        SetPanelBackground(calibrationPanel);
+        SetPanelBackground(realtimePanel);
+    }
+
+    private static void SetPanelBackground(RectTransform panel)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        var image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.gameObject.AddComponent<Image>();
+        }
+
+        image.color = DarkNavyBackground;
+        image.raycastTarget = false;
+    }
+
     private void ConfigureCalibrationController()
     {
+        calibrationController.calibrationPanel = calibrationPanel;
+        calibrationController.screenNavigator = screenNavigator;
         calibrationController.cueText = cueText;
         calibrationController.startCalibrationButton = startCalibrationButton;
         calibrationController.shutdownButton = shutdownButton;
@@ -197,15 +284,9 @@ public class BciLslPanel : MonoBehaviour
         WarnIfMissing(realtimePanel, nameof(realtimePanel));
         WarnIfMissing(menuCalibrationButton, nameof(menuCalibrationButton));
         WarnIfMissing(menuRealtimeButton, nameof(menuRealtimeButton));
-        WarnIfMissing(startCalibrationButton, nameof(startCalibrationButton));
         WarnIfMissing(shutdownButton, nameof(shutdownButton));
         WarnIfMissing(startRealtimeButton, nameof(startRealtimeButton));
         WarnIfMissing(stopRealtimeButton, nameof(stopRealtimeButton));
-        WarnIfMissing(saveBundleButton, nameof(saveBundleButton));
-        WarnIfMissing(subjectIdInput, nameof(subjectIdInput));
-        WarnIfMissing(calibrationProgressFill, nameof(calibrationProgressFill));
-        WarnIfMissing(calibrationProgressText, nameof(calibrationProgressText));
-        WarnIfMissing(warningText, nameof(warningText));
     }
 
     private void WarnIfMissing(UnityEngine.Object value, string fieldName)

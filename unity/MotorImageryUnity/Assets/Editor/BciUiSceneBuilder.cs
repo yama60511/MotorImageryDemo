@@ -7,19 +7,40 @@ using UnityEngine.UI;
 public static class BciUiSceneBuilder
 {
     private const string MainMenuScenePath = "Assets/MainMenu.unity";
+    private static readonly Color DarkNavyBackground = new Color(0.01568628f, 0.03137255f, 0.07843138f, 1.0f);
 
     [MenuItem("Motor Imagery/Rebuild Editable Main Menu UI")]
     public static void RebuildEditableMainMenuUi()
     {
         var scene = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+        var camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
+        if (camera != null)
+        {
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = DarkNavyBackground;
+        }
+
         var canvas = Object.FindAnyObjectByType<Canvas>();
         if (canvas == null)
         {
             var canvasGo = new GameObject("Canvas", typeof(RectTransform));
             canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasGo.AddComponent<CanvasScaler>();
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1440.0f, 810.0f);
+            scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
+        }
+        else
+        {
+            var scaler = canvas.GetComponent<CanvasScaler>();
+            if (scaler != null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1440.0f, 810.0f);
+                scaler.matchWidthOrHeight = 0.5f;
+            }
         }
 
         var panel = canvas.GetComponent<BciLslPanel>();
@@ -77,115 +98,53 @@ public static class BciUiSceneBuilder
             new Vector2(0.0f, -110.0f)
         );
 
-        CreateText(
-            calibrationPanel,
-            "CalibrationTitle",
-            "Calibration",
-            34.0f,
-            new Vector2(0.0f, 315.0f),
-            new Vector2(520.0f, 52.0f)
-        );
-        CreateText(
-            calibrationPanel,
-            "SubjectIdLabel",
-            "Subject ID",
-            20.0f,
-            new Vector2(-210.0f, 275.0f),
-            new Vector2(160.0f, 34.0f)
-        );
-        var subjectIdInput = CreateInputField(
-            calibrationPanel,
-            "SubjectIdInput",
-            "pc2_test",
-            new Vector2(45.0f, 275.0f),
-            new Vector2(300.0f, 42.0f)
-        );
-        var startCalibrationButton = CreateButton(
-            calibrationPanel,
-            "StartCalibrationButton",
-            "Start Calibration",
-            new Vector2(0.0f, 110.0f)
-        );
-        var calibrationProgressText = CreateText(
-            calibrationPanel,
-            "CalibrationProgressText",
-            "Calibration 0 / 40",
-            22.0f,
-            new Vector2(0.0f, 75.0f),
-            new Vector2(460.0f, 36.0f)
-        );
-        var calibrationProgressTrack = CreateBarTrack(
-            calibrationPanel,
-            "CalibrationProgressTrack",
-            new Vector2(420.0f, 18.0f),
-            new Vector2(0.0f, 45.0f)
-        );
-        var calibrationProgressFill = CreateBarFill(
-            calibrationProgressTrack,
-            "CalibrationProgressFill",
-            new Color(0.35f, 0.85f, 1.0f),
-            new Vector2(0.0f, 18.0f)
-        );
-        var warningText = CreateText(
-            calibrationPanel,
-            "WarningText",
-            "",
-            20.0f,
-            new Vector2(0.0f, 5.0f),
-            new Vector2(700.0f, 34.0f)
-        );
-        warningText.color = new Color(1.0f, 0.25f, 0.25f);
-        var cueText = CreateText(
-            calibrationPanel,
-            "CueText",
-            "",
-            64.0f,
-            Vector2.zero,
-            new Vector2(760.0f, 160.0f)
-        );
-        cueText.fontStyle = FontStyles.Bold;
-        var saveBundleButton = CreateButton(
-            calibrationPanel,
-            "SaveBundleButton",
-            "Save Model",
-            new Vector2(0.0f, -255.0f)
-        );
-        var backCalibrationButton = CreateButton(
-            calibrationPanel,
-            "BackToMenuFromCalibrationButton",
-            "Back",
-            new Vector2(0.0f, -325.0f)
-        );
+        TMP_InputField subjectIdInput = null;
+        Button startCalibrationButton = null;
+        Button saveBundleButton = null;
+        Button backCalibrationButton = null;
+        RectTransform calibrationProgressTrack = null;
+        RectTransform calibrationProgressFill = null;
+        TMP_Text calibrationProgressText = null;
+        TMP_Text warningText = null;
 
         var leftProbaText = CreateText(
             realtimePanel,
             "LeftProbaText",
             "p_left: ---",
-            28.0f,
-            new Vector2(-140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            36.0f,
+            new Vector2(-190.0f, 145.0f),
+            new Vector2(340.0f, 58.0f)
         );
         var rightProbaText = CreateText(
             realtimePanel,
             "RightProbaText",
             "p_right: ---",
-            28.0f,
-            new Vector2(140.0f, 120.0f),
-            new Vector2(260.0f, 44.0f)
+            36.0f,
+            new Vector2(190.0f, 145.0f),
+            new Vector2(340.0f, 58.0f)
         );
         var realtimeHintText = CreateText(
             realtimePanel,
             "RealtimeHintText",
             "Realtime idle",
-            24.0f,
+            30.0f,
             new Vector2(0.0f, -175.0f),
-            new Vector2(420.0f, 44.0f)
+            new Vector2(620.0f, 52.0f)
         );
+        var cueText = CreateText(
+            realtimePanel,
+            "RealtimeCueText",
+            "",
+            64.0f,
+            new Vector2(0.0f, 230.0f),
+            new Vector2(860.0f, 104.0f)
+        );
+        cueText.fontStyle = FontStyles.Bold;
         var probaIndicatorTrack = CreateBarTrack(
             realtimePanel,
             "ProbaIndicatorTrack",
-            new Vector2(360.0f, 18.0f),
-            new Vector2(0.0f, -210.0f)
+            new Vector2(560.0f, 26.0f),
+            new Vector2(0.0f, -225.0f)
         );
         var probaIndicatorThumb = CreateBarThumb(
             probaIndicatorTrack,
@@ -196,13 +155,13 @@ public static class BciUiSceneBuilder
             realtimePanel,
             "StartRealtimeButton",
             "Start Realtime",
-            new Vector2(-120.0f, -250.0f)
+            new Vector2(-155.0f, -275.0f)
         );
         var stopRealtimeButton = CreateButton(
             realtimePanel,
             "StopRealtimeButton",
             "Stop Realtime",
-            new Vector2(120.0f, -250.0f)
+            new Vector2(155.0f, -275.0f)
         );
         var backRealtimeButton = CreateButton(
             realtimePanel,
@@ -236,7 +195,21 @@ public static class BciUiSceneBuilder
         panel.probaIndicatorThumb = probaIndicatorThumb;
         panel.realtimeHintText = realtimeHintText;
 
+        var calibrationController = canvas.GetComponent<BciCalibrationController>();
+        if (calibrationController == null)
+        {
+            calibrationController = canvas.gameObject.AddComponent<BciCalibrationController>();
+        }
+        calibrationController.calibrationPanel = calibrationPanel;
+        calibrationController.warningColor = panel.warningColor;
+        calibrationController.leftCueColor = panel.leftCueColor;
+        calibrationController.rightCueColor = panel.rightCueColor;
+        calibrationController.restCueColor = panel.restCueColor;
+        calibrationController.readyCueColor = panel.readyCueColor;
+        calibrationController.realtimeCueColor = panel.realtimeCueColor;
+
         EditorUtility.SetDirty(panel);
+        EditorUtility.SetDirty(calibrationController);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         Debug.Log("Rebuilt editable Motor Imagery UI in MainMenu.unity");
@@ -251,6 +224,9 @@ public static class BciUiSceneBuilder
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+        var image = go.AddComponent<Image>();
+        image.color = DarkNavyBackground;
+        image.raycastTarget = false;
         go.SetActive(active);
         return rect;
     }
@@ -292,13 +268,13 @@ public static class BciUiSceneBuilder
         var rect = go.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
         rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(190.0f, 52.0f);
+        rect.sizeDelta = new Vector2(230.0f, 60.0f);
         rect.anchoredPosition = anchoredPosition;
         var image = go.AddComponent<Image>();
         image.color = new Color(0.12f, 0.12f, 0.12f, 0.92f);
         var button = go.AddComponent<Button>();
         button.targetGraphic = image;
-        CreateText(go.transform, $"{objectName}Text", label, 20.0f, Vector2.zero, rect.sizeDelta);
+        CreateText(go.transform, $"{objectName}Text", label, 22.0f, Vector2.zero, rect.sizeDelta);
         return button;
     }
 

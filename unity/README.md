@@ -50,10 +50,10 @@ at Play time.
   and subscribes to `Status` and `BCI_Proba`.
 - `BciScreenNavigator.cs`: screen switching between Main Menu, Calibration,
   and Realtime panels.
-- `BciCalibrationController.cs`: subject ID, `Start Calibration`, marker
-  sequence, calibration progress, warnings, `Save Model`, and `Shutdown`.
-- `BciRealtimeController.cs`: `Start Realtime`, `Stop Realtime`, probability
-  text, and the realtime probability indicator.
+- `BciCalibrationController.cs`: subject ID, `Acquire Data`, marker
+  sequence, collection progress, warnings, `Train Model`, and `Shutdown`.
+- `BciRealtimeController.cs`: bundle load-on-start, `Start Realtime`,
+  `Stop Realtime`, probability text, and the realtime probability indicator.
 
 ## Editing UI
 
@@ -130,12 +130,12 @@ When Unity shows `state:IDLE`, press `Shutdown`. The service should log
 ### Calibration
 
 `BciLslStreams` publishes a Unity `Markers` stream while Play is running. Enter
-a Subject ID on the Calibration screen, then press `Start Calibration`.
+a Subject ID on the Calibration screen, then press `Acquire Data`.
 
 Unity sends:
 
 ```text
-start_calibration:subject=S001
+start_collection:subject=S001
 ```
 
 Use simple IDs such as `S001` or `subject_001`; spaces are converted to
@@ -147,22 +147,23 @@ Unity then publishes balanced left/right cue markers plus rest markers:
 - right cue: `1`
 - rest: `99`
 
-During a full calibration, the service should report `state:CALIBRATING`,
-`calibration_progress:x/40`, then `state:TRAINING`, and finally `state:READY`.
-`BciCalibrationController` mirrors `calibration_progress:x/40` into a progress
-bar and `Calibration x / 40` text. `calibration_done:acc=...` fills the bar.
-`error:*` messages are shown in red in the warning text.
+During data collection, the service should report `state:COLLECTING`,
+`collection_progress:x/40`, then `collection_done:session=...` and
+`state:IDLE`. `BciCalibrationController` mirrors `collection_progress:x/40`
+into a progress bar and `Collection x / 40` text. `error:*` messages are shown
+in red in the warning text.
 
-When the service reaches `state:READY`, press `Save Model`. Unity sends:
+When collection is done, press `Train Model`. Unity sends:
 
 ```text
-save_bundle:subject=S001
+train:session=S001_YYYYMMDDTHHMMSS,decoder=csp_lda
 ```
 
 Expected service status:
 
 ```text
-bundle_saved:path=.../bundles/S001_*.joblib
+training_done:session=S001_YYYYMMDDTHHMMSS,decoder=csp_lda,acc=...
+bundles_available:S001_YYYYMMDDTHHMMSS/csp_lda:...
 ```
 
 For a quick progress UI check without running a full calibration, enter Play
@@ -174,19 +175,28 @@ python scripts/dev_status_progress.py
 
 Expected Unity display:
 
-- `Calibration 5 / 40` fills the progress bar to about 12.5%.
+- `Collection 5 / 40` fills the progress bar to about 12.5%.
 - `error:test_warning` appears in red.
 
 ### Realtime
 
-After calibration reaches `state:READY`, press `Start Realtime`.
+After training completes, press `Start Realtime`. If the service is still
+`state:IDLE`, Unity first sends:
+
+```text
+load_bundle:session=S001_YYYYMMDDTHHMMSS,decoder=csp_lda
+```
+
+Once the service reports `state:READY`, Unity starts realtime automatically.
 
 Expected service status:
 
 ```text
+bundle_loaded:session=...,decoder=csp_lda
 state:RUNNING
 realtime_warming_up
 realtime_ready
+now_running:session=...,decoder=csp_lda,acc=...
 ```
 
 Expected Unity display:

@@ -7,9 +7,14 @@ import numpy as np
 from bci.bundle import (
     Bundle,
     collect_package_versions,
+    find_bundles,
+    find_sessions,
     load_bundle,
+    load_session_recording,
     make_metadata,
+    make_recording_metadata,
     save_bundle,
+    save_session_recording,
 )
 from bci.config import PreprocessingConfig
 from bci.models.csp_lda import CSPLDADecoder
@@ -78,6 +83,61 @@ def test_round_trip_preserves_static_fields(tmp_path: Path) -> None:
     assert loaded.preprocessing.channel_order == ["C3", "C4"]
     assert loaded.preprocessing.apply_car is False
     assert loaded.preprocessing.bandpass == (8.0, 30.0)
+
+
+def test_session_recording_folder_round_trip(tmp_path: Path) -> None:
+    raw = np.zeros((2, 128), dtype=np.float64)
+    ts = np.arange(128, dtype=np.float64) / 128.0
+    metadata = make_recording_metadata(
+        session_id="A_20260509T123000",
+        subject="A",
+        recorded_at=None,
+        fs=128.0,
+        channel_order=["C3", "C4"],
+        n_trials_per_class=1,
+        n_total_trials=2,
+        cue_s=1.0,
+        mi_s=4.0,
+        rest_s=2.0,
+    )
+
+    path = save_session_recording(
+        tmp_path,
+        "A_20260509T123000",
+        raw=raw,
+        timestamps=ts,
+        marker_times=np.array([0.0, 6.0]),
+        marker_labels=np.array([0, 1]),
+        metadata=metadata,
+    )
+    loaded = load_session_recording(tmp_path, "A_20260509T123000")
+
+    assert path.name == "recording.npz"
+    np.testing.assert_allclose(loaded["raw"], raw)
+    assert loaded["metadata"]["session_id"] == "A_20260509T123000"
+    assert [s["session_id"] for s in find_sessions(tmp_path)] == [
+        "A_20260509T123000"
+    ]
+
+
+def test_bundle_folder_round_trip_and_scanner(tmp_path: Path) -> None:
+    bundle, X_eval = _make_fitted_bundle()
+    bundle.metadata.update(
+        {"session_id": "A_20260509T123000", "decoder_name": "csp_lda", "cv_acc": 0.78}
+    )
+
+    path = save_bundle(bundle, tmp_path / "A_20260509T123000" / "csp_lda")
+    loaded = load_bundle(path.parent)
+
+    assert path.name == "bundle.joblib"
+    np.testing.assert_allclose(
+        loaded.decoder.predict_proba(X_eval),
+        bundle.decoder.predict_proba(X_eval),
+    )
+    found = find_bundles(tmp_path)
+    assert found[0]["session_id"] == "A_20260509T123000"
+    assert found[0]["decoder_name"] == "csp_lda"
+    assert found[0]["acc"] == 0.78
 
 
 def test_metadata_contains_required_fields(tmp_path: Path) -> None:

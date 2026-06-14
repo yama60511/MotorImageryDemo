@@ -188,6 +188,7 @@ public class BciLslStreams : MonoBehaviour
             statusInlet.close_stream();
             statusInlet = null;
             queriedConfigForCurrentInlet = false;
+            StatusReceived?.Invoke("state:DISCONNECTED");
         }
     }
 

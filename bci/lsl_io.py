@@ -440,7 +440,7 @@ class MarkerReceiver:
 
 
 class CommandReceiver:
-    """Pulls string commands from Unity (start_calibration, etc.)."""
+    """Pulls string commands from Unity (start_collection, train, etc.)."""
 
     def __init__(
         self,

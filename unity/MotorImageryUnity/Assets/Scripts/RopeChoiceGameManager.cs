@@ -61,7 +61,7 @@ public class RopeChoiceGameManager : MonoBehaviour
     [SerializeField, Min(8)] private int longRoutePointCount = 192;
 
     [Header("Look")]
-    [SerializeField] private Color backgroundColor = new Color(0.05f, 0.07f, 0.11f);
+    [SerializeField] private Color backgroundColor = new Color(0.01568628f, 0.03137255f, 0.07843138f);
     [SerializeField] private Color ropeColor = new Color(0.94f, 0.96f, 1.0f);
     [SerializeField] private Color characterColor = new Color(0.20f, 0.72f, 1.0f);
     [SerializeField] private Color smoothTargetColor = new Color(1.0f, 0.88f, 0.16f);
@@ -479,6 +479,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         mainCamera.orthographic = true;
         mainCamera.orthographicSize = 5.0f;
+        mainCamera.clearFlags = CameraClearFlags.SolidColor;
         mainCamera.backgroundColor = backgroundColor;
         SetCameraY(startPosition.y + 2.1f);
     }
@@ -721,7 +722,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
     private static void EnsureDropdownTemplate(Dropdown dropdown)
     {
-        if (dropdown == null || (dropdown.template != null && dropdown.itemText != null))
+        if (dropdown == null)
         {
             return;
         }
@@ -742,6 +743,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         RectTransform content = FindOrCreateRect(viewport, "Content");
         ConfigureRect(content, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0.5f, 1f));
+        content.sizeDelta = new Vector2(0f, 108f);
 
         RectTransform item = FindOrCreateRect(content, "Item");
         ConfigureRect(item, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -18f), new Vector2(0f, 36f), new Vector2(0.5f, 1f));
@@ -774,7 +776,7 @@ public class RopeChoiceGameManager : MonoBehaviour
 
         if (root != null && root.sizeDelta.y > 0f)
         {
-            template.sizeDelta = new Vector2(template.sizeDelta.x, root.sizeDelta.y * 3f);
+            template.sizeDelta = new Vector2(template.sizeDelta.x, root.sizeDelta.y * 3.3f);
         }
 
         template.gameObject.SetActive(false);

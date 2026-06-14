@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import joblib
+import numpy as np
 
 from .config import PreprocessingConfig
-from .models.base import BaseDecoder
+
+if TYPE_CHECKING:
+    from .models.base import BaseDecoder
 
 _TRACKED_PACKAGES = ("numpy", "scipy", "scikit-learn", "mne", "joblib", "pylsl")
 
@@ -61,6 +65,25 @@ class Bundle:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def make_session_id(subject: str, now: datetime | None = None) -> str:
+    ts = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    return f"{subject}_{ts.strftime('%Y%m%dT%H%M%S')}"
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def make_metadata(
     *,
     subject: str,
@@ -103,9 +126,136 @@ def make_metadata(
     return md
 
 
+def make_recording_metadata(
+    *,
+    session_id: str,
+    subject: str,
+    recorded_at: datetime | None,
+    fs: float,
+    channel_order: list[str],
+    n_trials_per_class: int,
+    n_total_trials: int,
+    cue_s: float,
+    mi_s: float,
+    rest_s: float,
+    marker_left: int = 0,
+    marker_right: int = 1,
+    marker_rest: int = 99,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    recorded = (recorded_at or datetime.now(timezone.utc)).astimezone(
+        timezone.utc
+    )
+    md: dict[str, Any] = {
+        "session_id": session_id,
+        "subject": subject,
+        "recorded_at": recorded.isoformat(),
+        "fs": float(fs),
+        "channel_order": list(channel_order),
+        "n_trials_per_class": int(n_trials_per_class),
+        "n_total_trials": int(n_total_trials),
+        "cue_s": float(cue_s),
+        "mi_s": float(mi_s),
+        "rest_s": float(rest_s),
+        "marker_left": int(marker_left),
+        "marker_right": int(marker_right),
+        "marker_rest": int(marker_rest),
+        "package_versions": collect_package_versions(),
+        "git_sha": _git_sha(),
+    }
+    if extra:
+        md.update(extra)
+    return md
+
+
+def save_session_recording(
+    root: str | Path,
+    session_id: str,
+    *,
+    raw: np.ndarray,
+    timestamps: np.ndarray,
+    marker_times: np.ndarray,
+    marker_labels: np.ndarray,
+    metadata: dict[str, Any],
+) -> Path:
+    session_dir = Path(root) / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    recording_path = session_dir / "recording.npz"
+    np.savez(
+        recording_path,
+        raw=raw,
+        timestamps=timestamps,
+        marker_times=marker_times,
+        marker_labels=marker_labels,
+        fs=float(metadata["fs"]),
+        channel_order=np.array(metadata["channel_order"]),
+    )
+    with (session_dir / "metadata.json").open("w", encoding="utf-8") as f:
+        json.dump(_json_safe(metadata), f, indent=2, sort_keys=True)
+        f.write("\n")
+    return recording_path
+
+
+def load_session_recording(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
+    session_dir = Path(root) if session_id is None else Path(root) / session_id
+    recording_path = session_dir / "recording.npz"
+    metadata_path = session_dir / "metadata.json"
+    if not recording_path.exists():
+        raise FileNotFoundError(recording_path)
+    metadata: dict[str, Any] = {}
+    if metadata_path.exists():
+        with metadata_path.open("r", encoding="utf-8") as f:
+            metadata = json.load(f)
+    with np.load(recording_path, allow_pickle=False) as data:
+        return {
+            "session_id": metadata.get("session_id", session_dir.name),
+            "session_dir": session_dir,
+            "recording_path": recording_path,
+            "metadata": metadata,
+            "raw": data["raw"],
+            "timestamps": data["timestamps"],
+            "marker_times": data["marker_times"],
+            "marker_labels": data["marker_labels"],
+            "fs": float(data["fs"]),
+            "channel_order": [str(x) for x in data["channel_order"].tolist()],
+        }
+
+
+def find_sessions(root: str | Path) -> list[dict[str, Any]]:
+    root = Path(root)
+    if not root.exists():
+        return []
+    sessions: list[dict[str, Any]] = []
+    for session_dir in sorted(root.iterdir()):
+        if not session_dir.is_dir():
+            continue
+        if not (session_dir / "recording.npz").exists():
+            continue
+        metadata_path = session_dir / "metadata.json"
+        metadata: dict[str, Any] = {}
+        if metadata_path.exists():
+            with metadata_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        sessions.append(
+            {
+                "session_id": metadata.get("session_id", session_dir.name),
+                "subject": metadata.get("subject", session_dir.name.split("_", 1)[0]),
+                "path": session_dir,
+                "metadata": metadata,
+            }
+        )
+    return sorted(sessions, key=lambda item: str(item["session_id"]))
+
+
 def save_bundle(bundle: Bundle, path: str | Path) -> Path:
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix != ".joblib":
+        path.mkdir(parents=True, exist_ok=True)
+        metadata_path = path / "metadata.json"
+        path = path / "bundle.joblib"
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path = path.with_suffix(".metadata.json")
     payload = {
         "decoder": bundle.decoder,
         "decoder_name": bundle.decoder_name,
@@ -122,10 +272,16 @@ def save_bundle(bundle: Bundle, path: str | Path) -> Path:
         "metadata": bundle.metadata,
     }
     joblib.dump(payload, path)
+    with metadata_path.open("w", encoding="utf-8") as f:
+        json.dump(_json_safe(bundle.metadata), f, indent=2, sort_keys=True)
+        f.write("\n")
     return path
 
 
 def load_bundle(path: str | Path) -> Bundle:
+    path = Path(path)
+    if path.is_dir():
+        path = path / "bundle.joblib"
     payload = joblib.load(path)
     pre_dict = payload["preprocessing"]
     preprocessing = PreprocessingConfig(
@@ -148,4 +304,34 @@ def load_bundle(path: str | Path) -> Bundle:
         smoother_name=str(payload["smoother_name"]),
         smoother_params=dict(payload["smoother_params"]),
         metadata=dict(payload["metadata"]),
+    )
+
+
+def find_bundles(root: str | Path) -> list[dict[str, Any]]:
+    root = Path(root)
+    if not root.exists():
+        return []
+    bundles: list[dict[str, Any]] = []
+    for bundle_path in sorted(root.glob("*/*/bundle.joblib")):
+        bundle_dir = bundle_path.parent
+        decoder_name = bundle_dir.name
+        session_id = bundle_dir.parent.name
+        metadata_path = bundle_dir / "metadata.json"
+        metadata: dict[str, Any] = {}
+        if metadata_path.exists():
+            with metadata_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        bundles.append(
+            {
+                "session_id": metadata.get("session_id", session_id),
+                "decoder_name": metadata.get("decoder_name", decoder_name),
+                "path": bundle_dir,
+                "bundle_path": bundle_path,
+                "metadata": metadata,
+                "acc": metadata.get("cv_acc", metadata.get("cal_acc")),
+            }
+        )
+    return sorted(
+        bundles,
+        key=lambda item: (str(item["session_id"]), str(item["decoder_name"])),
     )

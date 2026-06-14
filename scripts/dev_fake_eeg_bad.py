@@ -6,7 +6,7 @@ Use this to verify Phase 5 calibration sanity checks:
 
 Then start service calibration and markers. The emitted EEG carries a
 large microvolt value, so service.py should publish
-``error:bad_calibration_data:reason=amp_exceeded`` and return to IDLE.
+``error:bad_collection_data:reason=amp_exceeded`` and return to IDLE.
 """
 
 from __future__ import annotations

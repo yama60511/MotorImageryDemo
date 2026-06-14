@@ -18,12 +18,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import GroupKFold
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from bci.bundle import Bundle, make_metadata, save_bundle  # noqa: E402
+from bci.bundle import (  # noqa: E402
+    Bundle,
+    make_metadata,
+    make_recording_metadata,
+    make_session_id,
+    save_bundle,
+    save_session_recording,
+)
 from bci.config import (  # noqa: E402
     PreprocessingConfig,
     build_preprocessing_config,
@@ -131,17 +139,36 @@ def main() -> int:
         len(markers),
     )
 
-    ts_label = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    data_path = REPO_ROOT / "data" / f"{args.subject}_{ts_label}.npz"
-    data_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        data_path,
+    session_id = make_session_id(args.subject)
+    data_root = REPO_ROOT / str(cfg["paths"]["data_dir"])
+    if data_root.name.lower() != "eeg":
+        data_root = data_root / "eeg"
+    recording_md = make_recording_metadata(
+        session_id=session_id,
+        subject=args.subject,
+        recorded_at=datetime.now(timezone.utc),
+        fs=fs,
+        channel_order=channel_order,
+        n_trials_per_class=n_per_class,
+        n_total_trials=len(markers),
+        cue_s=cue_s,
+        mi_s=mi_s,
+        rest_s=rest_s,
+        extra={
+            "source": "synthetic",
+            "synth_seed": args.seed,
+            "emotiv_total_channels": 7,
+            "emotiv_channel_names": ["FC3", "FC4"],
+        },
+    )
+    data_path = save_session_recording(
+        data_root,
+        session_id,
         raw=raw,
         timestamps=timestamps,
         marker_times=np.array([m[0] for m in markers], dtype=np.float64),
         marker_labels=np.array([m[1] for m in markers], dtype=np.int64),
-        fs=fs,
-        channel_order=np.array(channel_order),
+        metadata=recording_md,
     )
     logger.info("Saved raw to %s", data_path)
 
@@ -163,6 +190,8 @@ def main() -> int:
 
     splitter = GroupKFold(n_splits=n_splits)
     fold_accs: list[float] = []
+    all_true: list[int] = []
+    all_pred: list[int] = []
     for k, (tr, te) in enumerate(splitter.split(X, y, groups=group), start=1):
         groups_train = set(group[tr].tolist())
         groups_test = set(group[te].tolist())
@@ -170,11 +199,15 @@ def main() -> int:
             "GroupKFold leaked: same trial id in train and test"
         )
         decoder_k = CSPLDADecoder(n_components=4).fit(X[tr], y[tr])
-        acc = float((decoder_k.predict(X[te]) == y[te]).mean())
+        pred = decoder_k.predict(X[te])
+        acc = float((pred == y[te]).mean())
         fold_accs.append(acc)
+        all_true.extend(y[te].astype(int).tolist())
+        all_pred.extend(pred.astype(int).tolist())
         logger.info("fold %d: acc=%.3f", k, acc)
 
     cv_acc = float(np.mean(fold_accs))
+    cv_confusion = confusion_matrix(all_true, all_pred, labels=[0, 1]).astype(int)
     logger.info("trial-level GroupKFold acc = %.3f (folds: %s)", cv_acc, fold_accs)
 
     final_decoder = CSPLDADecoder(n_components=4).fit(X, y)
@@ -203,11 +236,22 @@ def main() -> int:
             emotiv_channel_names=["FC3", "FC4"],
             physical_electrodes=["FC3", "FC4"],
             logical_channels=channel_order,
-            extra={"source": "synthetic", "synth_seed": args.seed},
+            extra={
+                "session_id": session_id,
+                "decoder_name": "csp_lda",
+                "decoder_params": final_decoder.get_params(),
+                "trained_at": datetime.now(timezone.utc).isoformat(),
+                "cv_acc": cv_acc,
+                "cv_folds": fold_accs,
+                "cv_confusion": cv_confusion.tolist(),
+                "trials_used": int(trials.shape[0]),
+                "source": "synthetic",
+                "synth_seed": args.seed,
+            },
         ),
     )
-    bundle_path = REPO_ROOT / "bundles" / f"{args.subject}_{ts_label}.joblib"
-    save_bundle(bundle, bundle_path)
+    bundle_dir = REPO_ROOT / str(cfg["paths"]["bundles_dir"]) / session_id / "csp_lda"
+    bundle_path = save_bundle(bundle, bundle_dir)
     logger.info("Saved bundle to %s", bundle_path)
 
     if cv_acc < 0.65:
