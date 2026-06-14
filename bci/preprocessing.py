@@ -42,6 +42,18 @@ class Preprocessor:
 
         Accepts arrays with channels on the second-to-last axis and
         samples on the last axis (e.g. (ch, T) or (n_trials, ch, T)).
+
+        Each cascade is seeded with steady-state initial conditions
+        scaled to its first sample (``sosfilt_zi * x0``) so a large DC
+        offset on the input does not produce a start-up transient. A
+        zero-state ``sosfilt`` over EEG carrying an Emotiv-style ~4000 uV
+        DC offset rings to hundreds of uV for the first ~0.1 s — far above
+        the in-band signal scale — which a downstream amplitude sanity
+        check would mistake for a bad recording. This matters most for the
+        2-channel case, where CAR is off and cannot cancel the common-mode
+        transient. After the warm-up the response is identical to a
+        zero-state run, so the trials extracted for training are
+        unaffected.
         """
         arr = np.asarray(X, dtype=np.float64)
         if arr.ndim < 2:
@@ -49,11 +61,24 @@ class Preprocessor:
                 f"X must have at least 2 dims (..., ch, samples); got {arr.shape}"
             )
         if self.sos_notch is not None:
-            arr = sosfilt(self.sos_notch, arr, axis=-1)
-        arr = sosfilt(self.sos_bp, arr, axis=-1)
+            arr = self._sosfilt_steady(self.sos_notch, arr)
+        arr = self._sosfilt_steady(self.sos_bp, arr)
         if self.cfg.apply_car:
             arr = arr - arr.mean(axis=-2, keepdims=True)
         return arr
+
+    @staticmethod
+    def _sosfilt_steady(sos: np.ndarray, arr: np.ndarray) -> np.ndarray:
+        """``sosfilt`` along the last axis, seeded to the steady state for
+        each lane's first sample so a DC offset yields no start-up spike."""
+        orig_shape = arr.shape
+        if orig_shape[-1] == 0:
+            return arr
+        x2 = arr.reshape(-1, orig_shape[-1])  # (n_lanes, T)
+        # zi: (n_sections, n_lanes, 2) = sosfilt_zi(sos) scaled per lane by x0.
+        zi = sosfilt_zi(sos)[:, None, :] * x2[None, :, 0, None]
+        y2, _ = sosfilt(sos, x2, axis=-1, zi=zi)
+        return y2.reshape(orig_shape)
 
     def reset_filter_state(self, n_channels: int) -> None:
         """Reinitialise online zi state. Call before realtime starts."""
