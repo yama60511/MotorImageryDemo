@@ -12,6 +12,7 @@ def extract_trials(
     markers: list[tuple[float, int]],
     trial_len_s: float,
     fs: float,
+    onset_s: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Slice fixed-length trials out of a continuous EEG record.
 
@@ -28,6 +29,9 @@ def extract_trials(
         Trial duration in seconds.
     fs : float
         Sampling rate (Hz). Sanity-checked against ``timestamps``.
+    onset_s : float, optional
+        Seconds after the marker to start the epoch (default 0.0).
+        E.g. onset_s=1.0 skips the first second after the cue.
 
     Returns
     -------
@@ -44,13 +48,14 @@ def extract_trials(
     n_trial = int(round(trial_len_s * fs))
     if n_trial <= 0:
         raise ValueError("trial_len_s * fs must yield a positive sample count")
+    onset_samples = int(round(onset_s * fs))
 
     trials: list[np.ndarray] = []
     labels: list[int] = []
     for t_lsl, label in markers:
         if label not in _TRIAL_LABELS:
             continue
-        i0 = int(np.searchsorted(timestamps, t_lsl, side="left"))
+        i0 = int(np.searchsorted(timestamps, t_lsl, side="left")) + onset_samples
         i1 = i0 + n_trial
         if i0 < 0 or i1 > raw.shape[1]:
             # Marker too close to either end: skip silently.
