@@ -268,6 +268,22 @@ class _BadCalibrationEEGReceiver(_FakeEEGReceiver):
         return raw, ts
 
 
+class _NormalCalibrationEEGReceiver(_FakeEEGReceiver):
+    def stop_recording(self) -> tuple[np.ndarray, np.ndarray]:
+        # A realistic Emotiv 2-channel recording: a ~4180 uV DC offset plus
+        # a small in-band (15 Hz) oscillation of a few tens of uV. A
+        # zero-state bandpass turns the DC step into a brief multi-hundred-uV
+        # start-up transient, but the actual signal is tiny. This is exactly
+        # the recording the amplitude check used to falsely reject.
+        fs = 128.0
+        n = 256
+        t = np.arange(n) / fs
+        sig = 4180.0 + 15.0 * np.sin(2 * np.pi * 15.0 * t)
+        raw = np.vstack([sig, sig * 0.98]).astype(np.float64)
+        ts = t.astype(np.float64)
+        return raw, ts
+
+
 def _make_test_bundle() -> Bundle:
     pre_cfg = PreprocessingConfig(fs=128.0, channel_order=["C3", "C4"])
     return Bundle(
@@ -319,6 +335,37 @@ def test_finalize_calibration_rejects_amplitude_outlier(tmp_path: Path) -> None:
     assert svc.cal_data_path is not None and svc.cal_data_path.exists()
     with np.load(svc.cal_data_path) as data:
         assert data["raw"].shape == (2, 256)
+
+
+def test_finalize_calibration_accepts_normal_dc_offset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A normal recording with a large Emotiv DC offset must be accepted.
+
+    The bandpass start-up transient that DC offset produces is a filter
+    edge artefact, not signal, so the amplitude sanity check must not
+    reject the recording. Uses the real 500 uV threshold (the transient
+    spikes to ~2000 uV, so without the warm-up exclusion this would fail).
+    Training is stubbed to isolate the sanity-check behaviour.
+    """
+    cfg = _test_cfg(trials_per_class=1)
+    cfg["paths"]["data_dir"] = str(tmp_path)
+    cfg["calibration"]["sanity"]["max_abs_uv"] = 500.0
+    svc = Service(cfg=cfg)
+    status = _RecordingStatusPublisher()
+    svc.status_pub = status
+    svc.eeg_rx = _NormalCalibrationEEGReceiver()
+    svc.preprocessing = PreprocessingConfig(fs=128.0, channel_order=["C3", "C4"])
+    svc.state = State.CALIBRATING
+    # Isolate the sanity-check path from decoder training.
+    monkeypatch.setattr(svc, "_fit_decoder", lambda filtered, ts: 0.9)
+
+    svc._finalize_calibration()
+
+    joined = " | ".join(status.messages)
+    assert "amp_exceeded" not in joined, joined
+    assert svc.state == State.READY, joined
+    assert svc.cal_data_path is not None and svc.cal_data_path.exists()
 
 
 def test_load_bundle_command_moves_service_to_ready(tmp_path: Path) -> None:

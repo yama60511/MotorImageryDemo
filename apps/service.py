@@ -395,7 +395,16 @@ class Service:
         if self.sanity_nan_inf and not np.isfinite(data).all():
             self._push_status("error:bad_calibration_data:reason=non_finite")
             return False
-        max_abs = float(np.abs(data).max())
+        # Exclude the filter warm-up region from the amplitude check. A
+        # bandpass run from a zero state over EEG with a large DC offset
+        # produces a brief start-up transient that is a filter edge
+        # artefact, not signal — and on the 2-channel path (CAR off) it can
+        # spike to thousands of uV. Trials are extracted well after this
+        # region, so it must not fail an otherwise-good recording.
+        assert self.preprocessing is not None
+        warmup = int(round(self.preprocessing.fs))
+        amp_region = data[:, warmup:] if data.shape[1] > warmup else data
+        max_abs = float(np.abs(amp_region).max())
         if max_abs > self.sanity_max_abs_uv:
             self._push_status(
                 f"error:bad_calibration_data:reason=amp_exceeded:peak={max_abs:.1f}"
