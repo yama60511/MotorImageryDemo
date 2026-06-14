@@ -45,6 +45,9 @@ venv/
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
 
+# Unity crash/auto-save recovery scenes
+**/_Recovery/
+
 # Unity generated project files
 *.csproj
 *.sln
