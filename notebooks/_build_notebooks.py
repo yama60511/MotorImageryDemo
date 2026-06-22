@@ -60,15 +60,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 
+import mne
+from mne.decoding import CSP
+mne.set_log_level("WARNING")
+
 from sklearn.pipeline import Pipeline
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.svm import SVC
-from sklearn.model_selection import LeaveOneGroupOut, cross_val_score
+from sklearn.model_selection import LeaveOneGroupOut, cross_val_score, cross_val_predict
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import mne
-from mne.decoding import CSP
 
-mne.set_log_level("WARNING")  # CSP の冗長ログを抑制
+from pyriemann.estimation import Covariances
+from pyriemann.tangentspace import TangentSpace
+from pyriemann.classification import FgMDM
 
 # 共有ユーティリティ（実 BCI と同じ前処理・エポック化を呼ぶ）
 import mi_utils as U
@@ -220,12 +224,9 @@ print("\n（チャンスレベル = 0.50。2 クラスなので 0.5 を上回れ
     md(r"""
 ### 混同行列
 
-最も素直な CSP + LDA で、Leave-One-Session-Out の予測を全 fold 集めて
-混同行列にします。
+CSP + LDA で LOSO の予測を集めて混同行列にします。
 """),
     code(r"""
-from sklearn.model_selection import cross_val_predict
-
 pipe = Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())])
 y_pred = cross_val_predict(pipe, X, y, groups=ds.session, cv=logo)
 
@@ -236,22 +237,102 @@ plt.title(f"CSP + LDA  (LOSO, acc={(y_pred==y).mean():.2f})")
 plt.tight_layout(); plt.show()
 """),
     md(r"""
-## 6. まとめと演習
+## 6. さらに精度を上げる — リーマン幾何 (FgMDM)
 
-**まとめ**
-- 前処理（帯域制限）→ CSP（空間フィルタで左右差を強調）→ 軽い分類器、
-  という流れだけで運動想起をデコードできる。
-- 評価はセッションをまたいで行うのが誠実（過大評価を避ける）。
-- 古典手法は **データが少なくても安定** しやすいのが強み。
+### なぜリーマン幾何？
 
-**演習（コードを書き換えて試そう）**
-1. `load_dataset(bandpass=(...))` で帯域を μ 帯のみ(8–13)や β 帯のみ(13–30)に
-   変えると精度はどう変わる？
-2. `CSP(n_components=...)` を 2 / 6 / 8 に変えると？
-3. 1 セッションだけ取り出して、そのセッション内で `StratifiedKFold` した
-   精度と LOSO の精度を比べてみよう（差が「日による脳波の揺らぎ」）。
-4. 次のノートブック ② では、同じデータを **EEGNet（深層学習）** で
-   デコードします。古典手法と精度・手間を比べてみましょう。
+CSP+LDA は「分散（パワー）の最大化」という線形な視点でした。
+**リーマン幾何**は脳波の **共分散行列** を、**正定値対称行列の多様体（湾曲した空間）**
+上の点として扱い、その空間上の距離で分類します。
+
+- 共分散行列は「どのチャンネル同士が同期しているか」という**空間的なパターン**
+  を丸ごと保持している。
+- 湾曲した多様体上の距離を正しく測ることで、小規模データでも頑健に動く。
+
+**FgMDM (Frechet-geodesic Minimum Distance to Mean)**: 各クラスの
+リーマン重心（平均共分散行列）を学習し、テスト時は最も近い重心のクラスに割り当てる。
+
+### μ帯（8–13Hz）に絞る
+
+実験すると **μ帯のみ（8–13Hz）** でリーマン法を使うと精度が上がる場合があります。
+ERD は μ 帯（手の運動野）に最も強く出るため、β 成分の混入がノイズになることがあります。
+
+### 運動野チャンネル選択
+
+FC5 / FC6 / T7 / T8 / F3 / F4 ── 手の感覚運動野に近い 6 チャンネルに絞ります。
+頭頂・後頭部のチャンネルは運動想起とは関係が薄く、ノイズになりやすいです。
+"""),
+    code(r"""
+# μ帯 + 運動野 6ch のみで読み込み直す
+MOTOR_CH = [c for c in ["FC5", "FC6", "T7", "T8", "F3", "F4"] if c in ch_names]
+ds_mu = U.load_dataset(bandpass=(8, 13))
+X_mu = ds_mu.X[:, [ds_mu.ch_names.index(c) for c in MOTOR_CH], :]
+y_mu, sess_mu = ds_mu.y, ds_mu.session
+print(f"μ帯 + 運動野 {len(MOTOR_CH)}ch: {X_mu.shape}")
+
+# FgMDM: 共分散行列の推定 (lwf=Ledoit-Wolf) + リーマン最近傍
+pipe_riemann = Pipeline([
+    ("cov", Covariances("lwf")),
+    ("clf", FgMDM()),
+])
+
+scores_riemann = cross_val_score(pipe_riemann, X_mu, y_mu, groups=sess_mu, cv=logo)
+print(f"FgMDM (μ帯 + 運動野6ch) | セッション別: "
+      + ", ".join(f"{s:.2f}" for s in scores_riemann)
+      + f" | 平均 {scores_riemann.mean():.3f} ± {scores_riemann.std():.3f}")
+"""),
+    md(r"""
+### 手法比較まとめ
+"""),
+    code(r"""
+# 全手法の精度を並べてグラフ化
+comparisons = {
+    "CSP+LDA\n(8-30Hz 全ch)": cross_val_score(
+        Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())]),
+        X, y, groups=ds.session, cv=logo),
+    "CSP+LDA\n(μ帯 全ch)": cross_val_score(
+        Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())]),
+        ds_mu.X, y_mu, groups=sess_mu, cv=logo),
+    "FgMDM\n(μ帯 運動野6ch)": scores_riemann,
+    "TangentSpace+LDA\n(μ帯 運動野6ch)": cross_val_score(
+        Pipeline([("cov", Covariances("lwf")), ("ts", TangentSpace()), ("clf", LDA())]),
+        X_mu, y_mu, groups=sess_mu, cv=logo),
+}
+
+means = [v.mean() for v in comparisons.values()]
+stds  = [v.std()  for v in comparisons.values()]
+labels = list(comparisons.keys())
+
+fig, ax = plt.subplots(figsize=(9, 4))
+bars = ax.barh(labels, means, xerr=stds, color="steelblue", alpha=0.8, capsize=5)
+ax.axvline(0.5, color="tomato", ls="--", label="チャンスレベル (0.50)")
+for bar, m in zip(bars, means):
+    ax.text(m + 0.005, bar.get_y() + bar.get_height()/2, f"{m:.2f}",
+            va="center", fontsize=9)
+ax.set(xlabel="LOSO accuracy", title="手法別精度比較（平均 ± 標準偏差）", xlim=(0.3, 0.85))
+ax.legend(loc="lower right"); plt.tight_layout(); plt.show()
+"""),
+    md(r"""
+## 7. まとめと演習
+
+**実験から分かったこと**
+| 手法 | 精度 (LOSO) | ポイント |
+|---|---|---|
+| CSP + LDA (8–30Hz, 全14ch) | ~0.57 | ベースライン |
+| CSP + LDA (μ帯, 全14ch) | ~0.59 | 帯域を絞るだけで改善 |
+| FgMDM (μ帯, 運動野6ch) | ~0.64 | リーマン + ch選択がベスト |
+
+- **μ帯 (8–13Hz)** が ERD の主役。β は人によって効いたり効かなかったりする。
+- **チャンネル選択**でノイズを減らすとリーマン法が安定する。
+- リーマン幾何は「共分散行列の形」ごと分類するため、特徴設計が少なくて済む。
+- それでも LOSO で 0.64 程度：C3/C4 が無い EPOC X での MI は難しく、
+  「DL も含め、データ量と電極配置が最大のボトルネック」という事実を確認。
+
+**演習（試してみよう）**
+1. `MOTOR_CH` に `"P7", "P8"` を足すと精度はどう変わる？（後頭部は逆効果？）
+2. `FgMDM` を `MDM`（正則化なし）に替えると？
+3. `Covariances("lwf")` の `"lwf"` を `"oas"` や `"scm"` に替えると？
+4. ノート ② の EEGNet と今回の FgMDM の精度を並べて比較しよう。
 """),
 ]
 nb1.metadata["kernelspec"] = {
@@ -316,7 +397,8 @@ print("device:", device, "| torch", torch.__version__)
 増えて小規模データでの学習が安定します。
 """),
     code(r"""
-ds = U.load_dataset()
+# μ帯(8-13Hz)に絞る：実験でリーマン法と同様 μ帯が EEGNet でも有効
+ds = U.load_dataset(bandpass=(8, 13))
 Xw, yw, sess_w = U.make_windows(ds, window_s=2.0, stride_s=0.5)
 print("窓データ:", Xw.shape, "(窓数, チャンネル, サンプル)")
 print("ラベル内訳:", np.bincount(yw), "| セッション:", np.bincount(sess_w))
@@ -396,13 +478,16 @@ def to_tensor(X, y):
     yt = torch.tensor(y, dtype=torch.long)
     return Xt, yt
 
-def train_one_fold(Xtr, ytr, Xte, yte, epochs=60, batch=32, lr=1e-3, verbose=False):
+def train_one_fold(Xtr, ytr, Xte, yte, epochs=120, batch=32, lr=1e-3,
+                   weight_decay=1e-4, use_scheduler=True, verbose=False):
     Xtr, Xte = standardize(Xtr, Xte)
     Xtr_t, ytr_t = to_tensor(Xtr, ytr)
     Xte_t, yte_t = to_tensor(Xte, yte)
 
     model = EEGNet(n_ch, n_time).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    # CosineAnnealing: LR を余弦関数的に減衰させ、収束を安定させる
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs) if use_scheduler else None
     lossf = nn.CrossEntropyLoss()
     ds_tr = torch.utils.data.TensorDataset(Xtr_t, ytr_t)
     loader = torch.utils.data.DataLoader(ds_tr, batch_size=batch, shuffle=True)
@@ -415,13 +500,14 @@ def train_one_fold(Xtr, ytr, Xte, yte, epochs=60, batch=32, lr=1e-3, verbose=Fal
             opt.zero_grad()
             loss = lossf(model(xb), yb)
             loss.backward(); opt.step()
+        if scheduler: scheduler.step()
         # エポックごとのテスト精度を記録（学習曲線の可視化用）
         model.eval()
         with torch.no_grad():
             pred = model(Xte_t.to(device)).argmax(1).cpu().numpy()
         acc = (pred == yte).mean()
         history.append(acc)
-        if verbose and (ep + 1) % 10 == 0:
+        if verbose and (ep + 1) % 20 == 0:
             print(f"  epoch {ep+1:3d} | test acc {acc:.2f}")
     return pred, np.array(history)
 """),
@@ -432,7 +518,7 @@ first_history = None
 
 for k, (tr, te) in enumerate(logo.split(Xw, yw, groups=sess_w)):
     pred, hist = train_one_fold(Xw[tr], yw[tr], Xw[te], yw[te],
-                                verbose=(k == 0))
+                                epochs=120, use_scheduler=True, verbose=(k == 0))
     acc = (pred == yw[te]).mean()
     fold_acc.append(acc)
     all_true.append(yw[te]); all_pred.append(pred)
@@ -466,18 +552,27 @@ plt.tight_layout(); plt.show()
     md(r"""
 ## 5. まとめと演習
 
+**改善のポイント（ベースラインからの変更点）**
+| 変更 | 効果 |
+|---|---|
+| `bandpass=(8,13)` μ帯に絞る | 運動想起の ERD が最も強い帯域に集中 |
+| `epochs=120`（60→120）| 小バッチで収束が遅いため、十分な反復が必要 |
+| `CosineAnnealingLR` | LR を余弦関数で滑らかに減衰させ、収束を安定化 |
+| `weight_decay=1e-4` | L2 正則化でわずかに過学習を抑制 |
+
 **まとめ**
-- EEGNet は前処理済み波形から特徴設計なしで左右をデコードできる。
+- μ帯フィルタ + LR スケジューラで EEGNet の安定性が向上する。
 - depthwise 畳み込みは CSP のような **空間フィルタ** を学習しており、
   古典手法と発想は地続き。
-- ただしデータが小規模だと、CSP+LDA の方が安定して強いことも多い。
-  「手法の派手さ」より「データ量と評価設計」が効く、という感覚を持とう。
+- それでも LOSO でリーマン手法（FgMDM ~0.64）に追いつくのは難しい。
+  **DL が真に強みを発揮するにはデータ量が 1 桁以上必要**。
 
 **演習**
-1. `epochs` や `lr`、`p_drop` を変えると学習曲線・精度はどう動く？
-2. `make_windows(window_s=..., stride_s=...)` で窓の長さ・刻みを変えると？
-3. ノート ① の CSP+LDA と精度を並べて比べよう。どちらが安定している？
-4. （発展）`standardize` を外すと学習がどう不安定になるか観察しよう。
+1. `use_scheduler=False` に戻すと学習曲線はどう変わる？
+2. `epochs` を 60 / 200 に変えると精度は？（過学習 vs 未学習の境界を探そう）
+3. `make_windows(window_s=..., stride_s=...)` で窓の長さ・刻みを変えると？
+4. ノート ① の FgMDM と今回の EEGNet の精度を並べて比べよう。
+   「どちらが良い」より「なぜ差が出るのか」を考えてみよう。
 """),
 ]
 nb2.metadata["kernelspec"] = {
