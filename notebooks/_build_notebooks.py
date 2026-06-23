@@ -68,7 +68,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.svm import SVC
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_score, cross_val_predict
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import (confusion_matrix, ConfusionMatrixDisplay,
+                             roc_auc_score, cohen_kappa_score)
 
 from pyriemann.estimation import Covariances
 from pyriemann.tangentspace import TangentSpace
@@ -215,25 +216,39 @@ pipelines = {
 
 for name, pipe in pipelines.items():
     scores = cross_val_score(pipe, X, y, groups=ds.session, cv=logo, scoring="accuracy")
-    print(f"{name:12s} | セッション別精度: "
-          + ", ".join(f"{s:.2f}" for s in scores)
-          + f" | 平均 {scores.mean():.3f} ± {scores.std():.3f}")
+    auc    = cross_val_score(pipe, X, y, groups=ds.session, cv=logo, scoring="roc_auc")
+    print(f"{name:12s} | acc {scores.mean():.3f}±{scores.std():.3f}"
+          f" | AUC {auc.mean():.3f}±{auc.std():.3f}")
 
 print("\n（チャンスレベル = 0.50。2 クラスなので 0.5 を上回れば学習できている）")
 """),
     md(r"""
-### 混同行列
+### 混同行列・AUC-ROC・Cohen's κ
 
-CSP + LDA で LOSO の予測を集めて混同行列にします。
+CSP + LDA で LOSO の予測をまとめて評価します。
+
+| 指標 | 意味 | チャンスレベル |
+|---|---|---|
+| **Accuracy** | 全体の正答率 | 0.50 |
+| **AUC-ROC** | 確率スコアでの分離能（1.0 が完全分類） | 0.50 |
+| **Cohen's κ** | チャンスを補正した一致率（0.0=チャンス、1.0=完全） | 0.0 |
+
+κ の目安: 0.2 以下=わずか、0.2–0.4=公正、0.4–0.6=中程度、0.6 以上=良好
 """),
     code(r"""
 pipe = Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())])
-y_pred = cross_val_predict(pipe, X, y, groups=ds.session, cv=logo)
+y_pred  = cross_val_predict(pipe, X, y, groups=ds.session, cv=logo)
+y_proba = cross_val_predict(pipe, X, y, groups=ds.session, cv=logo, method="predict_proba")
+
+acc   = (y_pred == y).mean()
+auc   = roc_auc_score(y, y_proba[:, 1])
+kappa = cohen_kappa_score(y, y_pred)
+print(f"CSP + LDA  |  acc={acc:.3f}  AUC={auc:.3f}  κ={kappa:.3f}")
 
 cm = confusion_matrix(y, y_pred)
 disp = ConfusionMatrixDisplay(cm, display_labels=[U.CLASS_NAMES[0], U.CLASS_NAMES[1]])
 disp.plot(cmap="Blues", values_format="d")
-plt.title(f"CSP + LDA  (LOSO, acc={(y_pred==y).mean():.2f})")
+plt.title(f"CSP + LDA  (acc={acc:.2f}  AUC={auc:.2f}  κ={kappa:.2f})")
 plt.tight_layout(); plt.show()
 """),
     md(r"""
@@ -277,40 +292,61 @@ pipe_riemann = Pipeline([
 ])
 
 scores_riemann = cross_val_score(pipe_riemann, X_mu, y_mu, groups=sess_mu, cv=logo)
-print(f"FgMDM (μ帯 + 運動野6ch) | セッション別: "
-      + ", ".join(f"{s:.2f}" for s in scores_riemann)
-      + f" | 平均 {scores_riemann.mean():.3f} ± {scores_riemann.std():.3f}")
+y_pred_r  = cross_val_predict(pipe_riemann, X_mu, y_mu, groups=sess_mu, cv=logo)
+y_proba_r = cross_val_predict(pipe_riemann, X_mu, y_mu, groups=sess_mu, cv=logo, method="predict_proba")
+
+auc_r   = roc_auc_score(y_mu, y_proba_r[:, 1])
+kappa_r = cohen_kappa_score(y_mu, y_pred_r)
+print(f"FgMDM (μ帯 + 運動野6ch)")
+print(f"  セッション別 acc: " + ", ".join(f"{s:.2f}" for s in scores_riemann))
+print(f"  acc={scores_riemann.mean():.3f}±{scores_riemann.std():.3f}  AUC={auc_r:.3f}  κ={kappa_r:.3f}")
 """),
     md(r"""
 ### 手法比較まとめ
 """),
     code(r"""
-# 全手法の精度を並べてグラフ化
-comparisons = {
-    "CSP+LDA\n(8-30Hz 全ch)": cross_val_score(
+# 各手法の LOSO 予測を集めて acc / AUC / κ を比較
+def eval_pipe(pipe, Xd, yd, groups):
+    yp = cross_val_predict(pipe, Xd, yd, groups=groups, cv=logo)
+    yprob = cross_val_predict(pipe, Xd, yd, groups=groups, cv=logo, method="predict_proba")
+    return {
+        "acc":   (yp == yd).mean(),
+        "auc":   roc_auc_score(yd, yprob[:, 1]),
+        "kappa": cohen_kappa_score(yd, yp),
+    }
+
+rows = {
+    "CSP+LDA (8-30Hz 全ch)": eval_pipe(
         Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())]),
-        X, y, groups=ds.session, cv=logo),
-    "CSP+LDA\n(μ帯 全ch)": cross_val_score(
+        X, y, ds.session),
+    "CSP+LDA (μ帯 全ch)": eval_pipe(
         Pipeline([("csp", CSP(n_components=4, reg="ledoit_wolf", log=True)), ("clf", LDA())]),
-        ds_mu.X, y_mu, groups=sess_mu, cv=logo),
-    "FgMDM\n(μ帯 運動野6ch)": scores_riemann,
-    "TangentSpace+LDA\n(μ帯 運動野6ch)": cross_val_score(
+        ds_mu.X, y_mu, sess_mu),
+    "FgMDM (μ帯 運動野6ch)": {"acc": scores_riemann.mean(), "auc": auc_r, "kappa": kappa_r},
+    "TS+LDA (μ帯 運動野6ch)": eval_pipe(
         Pipeline([("cov", Covariances("lwf")), ("ts", TangentSpace()), ("clf", LDA())]),
-        X_mu, y_mu, groups=sess_mu, cv=logo),
+        X_mu, y_mu, sess_mu),
 }
 
-means = [v.mean() for v in comparisons.values()]
-stds  = [v.std()  for v in comparisons.values()]
-labels = list(comparisons.keys())
+print(f"{'手法':<26} {'Accuracy':>9} {'AUC-ROC':>9} {'Cohen κ':>9}")
+print("-" * 56)
+for name, m in rows.items():
+    print(f"{name:<26} {m['acc']:>9.3f} {m['auc']:>9.3f} {m['kappa']:>9.3f}")
 
-fig, ax = plt.subplots(figsize=(9, 4))
-bars = ax.barh(labels, means, xerr=stds, color="steelblue", alpha=0.8, capsize=5)
-ax.axvline(0.5, color="tomato", ls="--", label="チャンスレベル (0.50)")
-for bar, m in zip(bars, means):
-    ax.text(m + 0.005, bar.get_y() + bar.get_height()/2, f"{m:.2f}",
-            va="center", fontsize=9)
-ax.set(xlabel="LOSO accuracy", title="手法別精度比較（平均 ± 標準偏差）", xlim=(0.3, 0.85))
-ax.legend(loc="lower right"); plt.tight_layout(); plt.show()
+# グラフ（3 指標を並べて表示）
+import pandas as pd
+df = pd.DataFrame(rows).T
+x = np.arange(len(df))
+w = 0.25
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.bar(x - w, df["acc"],   w, label="Accuracy", color="steelblue",  alpha=0.85)
+ax.bar(x,     df["auc"],   w, label="AUC-ROC",  color="seagreen",   alpha=0.85)
+ax.bar(x + w, df["kappa"], w, label="Cohen κ",  color="darkorange",  alpha=0.85)
+ax.axhline(0.5, color="tomato", ls="--", lw=1, label="acc/AUC チャンス (0.5)")
+ax.axhline(0.0, color="gray",   ls=":",  lw=1, label="κ チャンス (0.0)")
+ax.set_xticks(x); ax.set_xticklabels(df.index, rotation=15, ha="right", fontsize=8)
+ax.set(ylabel="スコア", title="手法別評価指標比較（LOSO）", ylim=(-0.1, 1.0))
+ax.legend(fontsize=8, ncol=2); plt.tight_layout(); plt.show()
 """),
     md(r"""
 ## 7. まとめと演習
@@ -377,7 +413,8 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import (confusion_matrix, ConfusionMatrixDisplay,
+                             roc_auc_score, cohen_kappa_score)
 
 U.setup_japanese_font()  # グラフの日本語が豆腐(□)にならないように
 
@@ -509,25 +546,36 @@ def train_one_fold(Xtr, ytr, Xte, yte, epochs=120, batch=32, lr=1e-3,
         history.append(acc)
         if verbose and (ep + 1) % 20 == 0:
             print(f"  epoch {ep+1:3d} | test acc {acc:.2f}")
-    return pred, np.array(history)
+    # 確率スコアも返す（AUC 計算用）
+    model.eval()
+    with torch.no_grad():
+        proba = torch.softmax(model(Xte_t.to(device)), dim=1).cpu().numpy()
+    return pred, proba, np.array(history)
 """),
     code(r"""
 logo = LeaveOneGroupOut()
-fold_acc, all_true, all_pred = [], [], []
+fold_acc, all_true, all_pred, all_proba = [], [], [], []
 first_history = None
 
 for k, (tr, te) in enumerate(logo.split(Xw, yw, groups=sess_w)):
-    pred, hist = train_one_fold(Xw[tr], yw[tr], Xw[te], yw[te],
-                                epochs=120, use_scheduler=True, verbose=(k == 0))
+    pred, proba, hist = train_one_fold(Xw[tr], yw[tr], Xw[te], yw[te],
+                                       epochs=120, use_scheduler=True, verbose=(k == 0))
     acc = (pred == yw[te]).mean()
     fold_acc.append(acc)
-    all_true.append(yw[te]); all_pred.append(pred)
+    all_true.append(yw[te]); all_pred.append(pred); all_proba.append(proba)
     if first_history is None:
         first_history = hist
     print(f"fold {k} (test=session {sess_w[te][0]}): acc {acc:.3f}")
 
-print(f"\nEEGNet  LOSO 平均精度: {np.mean(fold_acc):.3f} ± {np.std(fold_acc):.3f}")
-print("（チャンスレベル = 0.50）")
+yt = np.concatenate(all_true)
+yp = np.concatenate(all_pred)
+yprob = np.concatenate(all_proba)
+
+auc   = roc_auc_score(yt, yprob[:, 1])
+kappa = cohen_kappa_score(yt, yp)
+print(f"\nEEGNet  LOSO  acc={np.mean(fold_acc):.3f}±{np.std(fold_acc):.3f}"
+      f"  AUC={auc:.3f}  κ={kappa:.3f}")
+print("（チャンスレベル: acc/AUC=0.50, κ=0.00）")
 """),
     md(r"""
 ## 4. 結果の可視化
@@ -542,11 +590,10 @@ ax1.set(xlabel="epoch", ylabel="test accuracy", title="学習曲線 (fold 0)", y
 ax1.axhline(0.5, color="gray", ls="--", label="chance")
 ax1.legend()
 
-yt = np.concatenate(all_true); yp = np.concatenate(all_pred)
 cm = confusion_matrix(yt, yp)
 ConfusionMatrixDisplay(cm, display_labels=[U.CLASS_NAMES[0], U.CLASS_NAMES[1]]).plot(
     cmap="Oranges", values_format="d", ax=ax2, colorbar=False)
-ax2.set_title(f"EEGNet (LOSO, acc={(yt==yp).mean():.2f})")
+ax2.set_title(f"EEGNet  acc={(yt==yp).mean():.2f}  AUC={auc:.2f}  κ={kappa:.2f}")
 plt.tight_layout(); plt.show()
 """),
     md(r"""
