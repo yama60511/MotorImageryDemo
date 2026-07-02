@@ -507,11 +507,18 @@ public class BciCalibrationController : MonoBehaviour
         var labels = BuildCollectionLabels();
         Debug.Log($"Collection marker sequence started: {labels.Count} cue markers");
 
-        yield return new WaitForSecondsRealtime(cueSeconds);
-
         for (int index = 0; index < labels.Count; index++)
         {
             int label = labels[index];
+
+            // Rest first on every trial, including the first, so each trial
+            // has the same rest -> cue -> motor-imagery structure.
+            SetCueText("REST", restCueColor);
+            streams?.PushMarker(restMarker);
+            Debug.Log($"Collection trial {index + 1}/{labels.Count} rest: marker={restMarker}");
+
+            yield return new WaitForSecondsRealtime(restSeconds);
+
             SetCueForMarker(label);
             Debug.Log($"Collection trial {index + 1}/{labels.Count} cue: marker={label}");
 
@@ -521,12 +528,6 @@ public class BciCalibrationController : MonoBehaviour
             Debug.Log($"Collection trial {index + 1}/{labels.Count} MI onset: marker={label}");
 
             yield return new WaitForSecondsRealtime(motorImagerySeconds);
-
-            SetCueText("REST", restCueColor);
-            streams?.PushMarker(restMarker);
-            Debug.Log($"Collection rest marker={restMarker}");
-
-            yield return new WaitForSecondsRealtime(restSeconds);
         }
 
         Debug.Log("Collection marker sequence complete.");
