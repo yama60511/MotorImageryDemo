@@ -1,90 +1,102 @@
-# EEG Decoding Notebooks
+# EEG Decoding Notebook
 
-Teaching materials for Motor Imagery (MI) EEG decoding.
-Recorded with an Emotiv EPOC X (14-channel, 128 Hz) during "left-hand / right-hand motor imagery,"
-two notebooks build and compare decoders using two different approaches.
+Motor Imagery（MI）EEGから、左手・右手の運動イメージを分類するための教材です。
+`eeg-decoding.ipynb` では、同じデータに対して古典的手法の CSP + LDA と、
+深層学習モデルの EEGNet / EEG-Conformer（`braindecode`）を比較します。
 
-| Notebook | Method | Contents |
-|---|---|---|
-| `01_csp_ml_classical_decoder.ipynb` | **CSP + Machine Learning** (classical) | Bandpass → CSP (spatial filter) → LDA/SVM, Riemannian geometry (FgMDM). ERD visualization, CSP topomaps, Leave-One-Session-Out evaluation. |
-| `02_eegnet_dl_decoder.ipynb` | **EEGNet** (deep learning) | End-to-end decoding from preprocessed signals. PyTorch implementation, learning curves, comparison with classical methods. |
+## ファイル構成
 
-We recommend working through `①` (classical) before `②` (deep learning).
-
-## Running on Google Colab
-
-### 1. Upload to Google Drive
-Place the `notebooks` folder and `data` folder in your Google Drive, **keeping them at the same directory level**:
-
-```
-MyDrive/
-└── MotorImageryDemo/
-    ├── notebooks/
-    │   ├── 01_csp_ml_classical_decoder.ipynb
-    │   ├── 02_eegnet_dl_decoder.ipynb
-    │   └── utils.py
-    └── data/
-        ├── (session 1)/   recording.npz, metadata.json
-        ├── (session 2)/   ...
-        └── ...
+```text
+notebooks/
+├── eeg-decoding.ipynb  # 解析・可視化・デコーディング
+├── utils.py            # EEGデータの読み込み
+└── assets/             # notebookで使用する画像
 ```
 
-### 2. Open in Colab
-Right-click the `.ipynb` file on Drive → "Open with" → "Google Colaboratory".
+## Notebookの内容
 
-### 3. Run the Setup cell
-The second cell in each notebook (marked `# === Setup ===`) automatically:
+1. 生EEGデータの読み込みと確認
+2. MNEによる前処理（ノッチフィルタ、バンドパス、CAR）とエポック化
+3. 前処理後の信号確認と不良試行の除外
+4. ERDSマップの計算と可視化
+5. CSP特徴量の可視化
+6. CSP + LDA、EEGNet、EEG-Conformerの学習・評価・比較
 
-- Installs any extra packages (Notebook ① needs `mne` + `pyriemann`; Notebook ② needs
-  nothing beyond Colab's pre-installed PyTorch)
-- Mounts Google Drive (you will be prompted to grant access)
-- Changes to the `notebooks` directory (needed to import `utils.py` and find `../data`)
+## データ配置
 
-> If you renamed the folder, update the `%cd` path in the Setup cell accordingly.
+`notebooks` と `data` を同じ階層に配置してください。
 
-### 4. Run cells top to bottom
-Notebook `②` (EEGNet) runs faster on a **GPU runtime** (Runtime → Change runtime type →
-Hardware accelerator: GPU). It also works on CPU.
-
-## Data Location
-
-Each notebook has a `DATA_DIR` cell near the top where you specify the data location:
-
-```python
-DATA_DIR = None          # auto-search: checks MI_DATA_DIR env var, then ../data
-DATA_DIR = "/path/..."   # point directly to the folder containing recording.npz files
+```text
+MotorImageryDemo/
+├── notebooks/
+│   ├── eeg-decoding.ipynb
+│   ├── utils.py
+│   └── assets/
+└── data/
+    ├── session-1/
+    │   └── recording.npz
+    ├── session-2/
+    │   └── recording.npz
+    └── ...
 ```
 
-With the folder structure above, `DATA_DIR = None` will automatically find `../data`.
-Each session folder contains `recording.npz` (continuous EEG, timestamps, markers) and
-`metadata.json`.
+`utils.py` は次の順にデータディレクトリを探索します。
 
-## Shared Module `utils.py`
+1. 環境変数 `MI_DATA_DIR`
+2. `../data`
+3. `./data`
 
-A shared module used by both notebooks for data loading and preprocessing (no external
-dependencies beyond what the notebooks already install). The preprocessing pipeline
-(notch → bandpass → CAR) and epoching logic are identical to the real-time BCI service.
+別の場所にデータがある場合は、環境変数を設定するか、
+`U.load_raw_eeg("/path/to/data")` のように直接指定してください。
 
-- `load_dataset()` — loads all sessions, applies preprocessing, and extracts 4-second MI epochs.
-- `load_erd_time_courses()` — loads baseline-to-MI epochs and computes configurable band ERD% curves.
-- `plot_erd_time_courses()` — plots the configured bands for FC5/FC6.
-- `sliding_windows()` — expands a set of trials into overlapping windows (same data augmentation as real-time inference). Returns a per-window source-trial index so windows are split **after** the train/test split (Notebook ② applies it inside each CV fold to avoid leakage).
+各 `recording.npz` には、少なくとも次の配列が必要です。
 
-## Note on Electrode Placement
+- `raw`: EEG信号（channels × samples、単位は µV）
+- `timestamps`: 各サンプルのタイムスタンプ
+- `marker_times`: 試行開始時刻
+- `marker_labels`: ラベル（0=left、1=right、99=rest）
+- `fs`: サンプリング周波数
+- `channel_order`: チャンネル名
 
-The standard BCI electrodes C3/C4 (directly above the hand motor area) are absent on the EPOC X,
-so we rely on nearby channels **FC5 / FC6 / T7 / T8**. Accuracy is therefore modest (slightly
-above the 50% chance level in some sessions). Part of the learning experience is that electrode
-placement and data volume matter as much as — or more than — algorithmic choices.
+## Google Colabで実行
 
-## Running Locally (for developers)
+1. `MotorImageryDemo` フォルダをGoogle Driveの `MyDrive` 直下に配置します。
+2. `eeg-decoding.ipynb` をGoogle Colabで開きます。
+3. 先頭のSetupセルを実行します。
+4. 以降のセルを上から順に実行します。
+
+Setupセルは `mne` と `braindecode` をインストールし、Google Driveをマウントして
+`/content/drive/MyDrive/MotorImageryDemo/notebooks` に移動します。配置先を変更した場合は、
+Setupセル内の `%cd` も変更してください。
+
+深層学習部分は、Colabの「ランタイム」→「ランタイムのタイプを変更」からGPUを選ぶと
+高速に実行できます。CPUでも実行可能です。
+
+## ローカルで実行
+
+プロジェクトの環境を有効化してJupyterを起動します。
 
 ```bash
 conda activate MotorImageryDemo
-pip install mne pyriemann torch
-export MI_DATA_DIR=/path/to/recordings   # used when DATA_DIR=None
-jupyter lab
+jupyter lab notebooks/eeg-decoding.ipynb
 ```
 
-> The Setup cell is automatically skipped outside Colab. `utils` sets `KMP_DUPLICATE_LIB_OK`
-> on import to prevent OpenMP double-load crashes on macOS when using PyTorch with numpy/MNE.
+データを標準配置に置かない場合は、起動前に `MI_DATA_DIR` を設定してください。
+
+```bash
+export MI_DATA_DIR=/path/to/data
+```
+
+## `utils.py`
+
+- `load_raw_eeg(data_dir=None)`: 全セッションの `recording.npz` を読み込み、連結した
+  `mne.io.RawArray` を返します。µVの入力はVへ変換され、試行ラベルはMNE Annotationとして付与されます。
+- `print_raw_summary(raw)`: チャンネル数、サンプル数、収録時間、サンプリング周波数、
+  Annotation数を表示します。
+- `LABEL_NAMES`: `{0: "left", 1: "right", 99: "rest"}` のラベル対応です。
+
+## 電極配置について
+
+Emotiv EPOC Xには、運動野直上の標準的なMI用電極 C3/C4 がありません。
+このnotebookでは近傍の FC5/FC6 などを使用するため、電極配置やデータ量によっては
+分類精度がチャンスレベル（50%）に近くなる場合があります。
