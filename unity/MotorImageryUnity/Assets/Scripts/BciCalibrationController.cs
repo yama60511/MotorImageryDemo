@@ -34,6 +34,7 @@ public class BciCalibrationController : MonoBehaviour
     public Color leftCueColor = new Color(0.35f, 0.85f, 1.0f);
     public Color rightCueColor = new Color(1.0f, 0.55f, 0.35f);
     public Color restCueColor = new Color(0.8f, 0.8f, 0.8f);
+    public Color fixationCueColor = new Color(0.85f, 0.85f, 0.85f);
     public Color readyCueColor = Color.white;
     public Color realtimeCueColor = new Color(0.45f, 1.0f, 0.55f);
 
@@ -41,8 +42,16 @@ public class BciCalibrationController : MonoBehaviour
     public float cueSeconds = 1.0f;
     public float motorImagerySeconds = 4.0f;
     public float restSeconds = 2.0f;
-    public int leftMarker = 0;
-    public int rightMarker = 1;
+    public float fixationSeconds = 2.0f;
+    // Trial phase markers. Motor-imagery onset (leftMarker/rightMarker)
+    // stays 0/1 because those are the labels the decoder trains on; the
+    // fixation/cue markers use distinct integers the service ignores for
+    // training but still streams so they can be recovered offline.
+    public int leftMarker = 0;         // left motor-imagery onset (GO)
+    public int rightMarker = 1;        // right motor-imagery onset (GO)
+    public int cueLeftMarker = 10;     // left cue (READY)
+    public int cueRightMarker = 11;    // right cue (READY)
+    public int fixationMarker = 98;    // fixation cross
     public int restMarker = 99;
     public bool shuffleCalibrationTrials = true;
     public int trialShuffleSeed = 1;
@@ -499,34 +508,44 @@ public class BciCalibrationController : MonoBehaviour
         {
             Debug.LogWarning(
                 $"service_config not received within {serviceConfigWaitSeconds}s; " +
-                $"using Inspector defaults (cue={cueSeconds}s, mi={motorImagerySeconds}s, " +
-                $"rest={restSeconds}s, trials/class={trialsPerClass})."
+                $"using Inspector defaults (fixation={fixationSeconds}s, cue={cueSeconds}s, " +
+                $"mi={motorImagerySeconds}s, rest={restSeconds}s, trials/class={trialsPerClass})."
             );
         }
 
         var labels = BuildCollectionLabels();
-        Debug.Log($"Collection marker sequence started: {labels.Count} cue markers");
+        Debug.Log($"Collection marker sequence started: {labels.Count} MI-onset markers");
 
         for (int index = 0; index < labels.Count; index++)
         {
             int label = labels[index];
+            bool isLeft = label == leftMarker;
+            Color sideColor = isLeft ? leftCueColor : rightCueColor;
+            string sideName = isLeft ? "LEFT" : "RIGHT";
+            int cueMarker = isLeft ? cueLeftMarker : cueRightMarker;
 
-            // Rest first on every trial, including the first, so each trial
-            // has the same rest -> cue -> motor-imagery structure.
+            // Every trial follows the same structure:
+            //   rest -> fixation -> cue (READY) -> motor imagery (GO).
+            // A distinct marker is streamed at each phase; the cue and MI
+            // markers encode the side so left/right are separable offline.
             SetCueText("REST", restCueColor);
             streams?.PushMarker(restMarker);
             Debug.Log($"Collection trial {index + 1}/{labels.Count} rest: marker={restMarker}");
-
             yield return new WaitForSecondsRealtime(restSeconds);
 
-            SetCueForMarker(label);
-            Debug.Log($"Collection trial {index + 1}/{labels.Count} cue: marker={label}");
+            SetCueText("+", fixationCueColor);
+            streams?.PushMarker(fixationMarker);
+            Debug.Log($"Collection trial {index + 1}/{labels.Count} fixation: marker={fixationMarker}");
+            yield return new WaitForSecondsRealtime(fixationSeconds);
 
+            SetCueText($"{sideName}\nREADY", sideColor);
+            streams?.PushMarker(cueMarker);
+            Debug.Log($"Collection trial {index + 1}/{labels.Count} cue: marker={cueMarker}");
             yield return new WaitForSecondsRealtime(cueSeconds);
 
+            SetCueText($"{sideName}\nGO", sideColor);
             streams?.PushMarker(label);
             Debug.Log($"Collection trial {index + 1}/{labels.Count} MI onset: marker={label}");
-
             yield return new WaitForSecondsRealtime(motorImagerySeconds);
         }
 
@@ -1164,6 +1183,12 @@ public class BciCalibrationController : MonoBehaviour
                         restSeconds = rs;
                     }
                     break;
+                case "fixation_s":
+                    if (float.TryParse(value, NumberStyles.Float, culture, out float fs))
+                    {
+                        fixationSeconds = fs;
+                    }
+                    break;
                 case "trials_per_class":
                     if (int.TryParse(value, NumberStyles.Integer, culture, out int tpc))
                     {
@@ -1241,22 +1266,6 @@ public class BciCalibrationController : MonoBehaviour
         localWarningText.text = message;
         localWarningText.color = warningColor;
         localWarningText.gameObject.SetActive(!string.IsNullOrEmpty(message));
-    }
-
-    private void SetCueForMarker(int marker)
-    {
-        if (marker == leftMarker)
-        {
-            SetCueText("LEFT", leftCueColor);
-        }
-        else if (marker == rightMarker)
-        {
-            SetCueText("RIGHT", rightCueColor);
-        }
-        else
-        {
-            SetCueText($"MARKER {marker}", readyCueColor);
-        }
     }
 
     private void SetCueText(string text, Color color)

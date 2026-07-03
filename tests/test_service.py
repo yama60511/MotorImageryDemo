@@ -69,6 +69,7 @@ def _test_cfg(trials_per_class: int = 2) -> dict:
         },
         "calibration": {
             "trials_per_class": trials_per_class,
+            "fixation_s": 0.3,
             "cue_s": 0.2,
             "mi_s": 1.5,
             "rest_s": 0.4,
@@ -360,16 +361,15 @@ def test_finalize_collection_rejects_amplitude_outlier(tmp_path: Path) -> None:
         assert data["raw"].shape == (2, 256)
 
 
-def test_finalize_calibration_accepts_normal_dc_offset(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_finalize_collection_accepts_normal_dc_offset(tmp_path: Path) -> None:
     """A normal recording with a large Emotiv DC offset must be accepted.
 
     The bandpass start-up transient that DC offset produces is a filter
     edge artefact, not signal, so the amplitude sanity check must not
     reject the recording. Uses the real 500 uV threshold (the transient
     spikes to ~2000 uV, so without the warm-up exclusion this would fail).
-    Training is stubbed to isolate the sanity-check behaviour.
+    No auto_train is requested, so the sanity-check path is exercised in
+    isolation and the service returns to IDLE without training.
     """
     cfg = _test_cfg(trials_per_class=1)
     cfg["paths"]["data_dir"] = str(tmp_path)
@@ -379,16 +379,21 @@ def test_finalize_calibration_accepts_normal_dc_offset(
     svc.status_pub = status
     svc.eeg_rx = _NormalCalibrationEEGReceiver()
     svc.preprocessing = PreprocessingConfig(fs=128.0, channel_order=["C3", "C4"])
-    svc.state = State.CALIBRATING
-    # Isolate the sanity-check path from decoder training.
-    monkeypatch.setattr(svc, "_fit_decoder", lambda filtered, ts: 0.9)
+    svc.collection_subject = "alice"
+    svc.collection_session_id = "alice_20260509T123000"
+    svc.collection_trial_onsets = [(0.0, 0), (1.0, 1)]
+    svc.state = State.COLLECTING
 
-    svc._finalize_calibration()
+    svc._finalize_collection()
 
     joined = " | ".join(status.messages)
     assert "amp_exceeded" not in joined, joined
-    assert svc.state == State.READY, joined
-    assert svc.cal_data_path is not None and svc.cal_data_path.exists()
+    assert "collection_done" in joined, joined
+    assert svc.state == State.IDLE, joined
+    assert (
+        svc.collection_recording_path is not None
+        and svc.collection_recording_path.exists()
+    )
 
 
 def test_load_bundle_command_moves_service_to_ready(tmp_path: Path) -> None:

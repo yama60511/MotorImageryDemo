@@ -301,7 +301,13 @@ class EEGReceiver:
             if not samples:
                 continue
             arr = np.asarray(samples, dtype=np.float64)
-            ts = np.asarray(timestamps, dtype=np.float64)
+            # pull_chunk returns timestamps in the sender's clock; add the
+            # inlet's time correction so recorded ts live in our local_clock
+            # domain and stay comparable with the (separately corrected)
+            # marker timestamps used for trial extraction.
+            ts = np.asarray(timestamps, dtype=np.float64) + _time_correction(
+                self._inlet
+            )
             eeg = arr[:, offset:eeg_end]
             if sel is not None:
                 eeg = eeg[:, sel]
@@ -399,13 +405,29 @@ def _resolve_one(
     return inlet
 
 
+def _time_correction(inlet: StreamInlet) -> float:
+    """Offset to add to an inlet's timestamps to map them to local_clock.
+
+    Returns 0.0 if the correction can't be computed yet (e.g. the outlet
+    hasn't responded to the time-sync handshake). liblsl caches the value,
+    so calling this once per pulled chunk is cheap.
+    """
+    try:
+        return float(inlet.time_correction(timeout=0.0))
+    except Exception:  # pragma: no cover -- pylsl runtime/sync issue
+        return 0.0
+
+
 class MarkerReceiver:
     """Pulls integer markers from an LSL stream.
 
     The publisher (Unity) is expected to push (timestamp_lsl, label)
-    pairs where label encodes left/right MI cue or rest. We keep the
-    LSL clock timestamp because it lives on the same clock as the EEG
-    timestamps once pylsl applies its drift correction.
+    pairs where label encodes left/right MI cue or rest. The marker and
+    EEG streams come from different processes, so their raw pull_chunk
+    timestamps live in different clock domains. We add the inlet's
+    ``time_correction()`` to map marker timestamps into our local_clock
+    domain, matching the EEG receiver, so the two align for trial
+    extraction.
     """
 
     def __init__(
@@ -433,9 +455,10 @@ class MarkerReceiver:
         )
         if not samples:
             return []
+        correction = _time_correction(self._inlet)
         out: list[tuple[float, int]] = []
         for sample, t in zip(samples, timestamps):
-            out.append((float(t), int(sample[0])))
+            out.append((float(t) + correction, int(sample[0])))
         return out
 
 

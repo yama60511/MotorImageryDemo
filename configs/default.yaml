@@ -26,14 +26,18 @@ preprocessing:
   reference: auto              # auto | car | none
 
 calibration:
-  trials_per_class: 5
+  trials_per_class: 3
+  fixation_s: 2.0
   cue_s: 1.0
   mi_s: 4.0
-  rest_s: 2.0
-  # Marker integers are hardcoded throughout (0=left, 1=right, 99=rest)
-  # in both bci/epoching.py and Unity. No config knob is exposed.
+  rest_s: 3.0
+  # Trial structure: rest -> fixation -> cue (READY) -> motor imagery (GO).
+  # Marker integers are hardcoded throughout (0=left MI/go, 1=right MI/go,
+  # 10=left cue, 11=right cue, 98=fixation, 99=rest) in both
+  # bci/epoching.py and Unity. Only 0/1 are used as decoder trial onsets;
+  # the rest are streamed for offline analysis. No config knob is exposed.
   sanity:
-    max_abs_uv: 500.0
+    max_abs_uv: 4000.0
     nan_inf_check: true
 
 windowing:

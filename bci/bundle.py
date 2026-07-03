@@ -70,6 +70,14 @@ def make_session_id(subject: str, now: datetime | None = None) -> str:
     return f"{subject}_{ts.strftime('%Y%m%dT%H%M%S')}"
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    """Return the JSON object stored at ``path``, or ``{}`` if it is absent."""
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _json_safe(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
@@ -138,8 +146,12 @@ def make_recording_metadata(
     cue_s: float,
     mi_s: float,
     rest_s: float,
+    fixation_s: float = 0.0,
     marker_left: int = 0,
     marker_right: int = 1,
+    marker_cue_left: int = 10,
+    marker_cue_right: int = 11,
+    marker_fixation: int = 98,
     marker_rest: int = 99,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -154,11 +166,15 @@ def make_recording_metadata(
         "channel_order": list(channel_order),
         "n_trials_per_class": int(n_trials_per_class),
         "n_total_trials": int(n_total_trials),
+        "fixation_s": float(fixation_s),
         "cue_s": float(cue_s),
         "mi_s": float(mi_s),
         "rest_s": float(rest_s),
         "marker_left": int(marker_left),
         "marker_right": int(marker_right),
+        "marker_cue_left": int(marker_cue_left),
+        "marker_cue_right": int(marker_cue_right),
+        "marker_fixation": int(marker_fixation),
         "marker_rest": int(marker_rest),
         "package_versions": collect_package_versions(),
         "git_sha": _git_sha(),
@@ -199,13 +215,9 @@ def save_session_recording(
 def load_session_recording(root: str | Path, session_id: str | None = None) -> dict[str, Any]:
     session_dir = Path(root) if session_id is None else Path(root) / session_id
     recording_path = session_dir / "recording.npz"
-    metadata_path = session_dir / "metadata.json"
     if not recording_path.exists():
         raise FileNotFoundError(recording_path)
-    metadata: dict[str, Any] = {}
-    if metadata_path.exists():
-        with metadata_path.open("r", encoding="utf-8") as f:
-            metadata = json.load(f)
+    metadata = _read_json(session_dir / "metadata.json")
     with np.load(recording_path, allow_pickle=False) as data:
         return {
             "session_id": metadata.get("session_id", session_dir.name),
@@ -231,11 +243,7 @@ def find_sessions(root: str | Path) -> list[dict[str, Any]]:
             continue
         if not (session_dir / "recording.npz").exists():
             continue
-        metadata_path = session_dir / "metadata.json"
-        metadata: dict[str, Any] = {}
-        if metadata_path.exists():
-            with metadata_path.open("r", encoding="utf-8") as f:
-                metadata = json.load(f)
+        metadata = _read_json(session_dir / "metadata.json")
         sessions.append(
             {
                 "session_id": metadata.get("session_id", session_dir.name),
@@ -316,11 +324,7 @@ def find_bundles(root: str | Path) -> list[dict[str, Any]]:
         bundle_dir = bundle_path.parent
         decoder_name = bundle_dir.name
         session_id = bundle_dir.parent.name
-        metadata_path = bundle_dir / "metadata.json"
-        metadata: dict[str, Any] = {}
-        if metadata_path.exists():
-            with metadata_path.open("r", encoding="utf-8") as f:
-                metadata = json.load(f)
+        metadata = _read_json(bundle_dir / "metadata.json")
         bundles.append(
             {
                 "session_id": metadata.get("session_id", session_id),

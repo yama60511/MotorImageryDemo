@@ -20,7 +20,6 @@ import enum
 import logging
 import signal
 import sys
-import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -344,8 +343,11 @@ class Service:
             return
 
         for t_lsl, label in self.marker_rx.pull():
+            # Persist every marker (rest/fixation/cue/MI) so the full
+            # paradigm is recoverable offline; only MI onsets (0/1) drive
+            # trial counting and, later, decoder training.
+            self.collection_trial_onsets.append((t_lsl, label))
             if label in (0, 1):
-                self.collection_trial_onsets.append((t_lsl, label))
                 self.collection_cue_count += 1
                 self.collection_last_cue_t = time.time()
                 self._push_status(
@@ -412,6 +414,7 @@ class Service:
         assert self.collection_session_id is not None
 
         markers = self.collection_trial_onsets
+        n_mi_trials = sum(1 for _, label in markers if label in (0, 1))
         eeg_info = self.eeg_rx.info if self.eeg_rx is not None else {}
         metadata = make_recording_metadata(
             session_id=self.collection_session_id,
@@ -420,7 +423,8 @@ class Service:
             fs=self.preprocessing.fs,
             channel_order=list(self.preprocessing.channel_order),
             n_trials_per_class=int(self.cfg["calibration"]["trials_per_class"]),
-            n_total_trials=len(markers),
+            n_total_trials=n_mi_trials,
+            fixation_s=float(self.cfg["calibration"]["fixation_s"]),
             cue_s=float(self.cfg["calibration"]["cue_s"]),
             mi_s=float(self.cfg["calibration"]["mi_s"]),
             rest_s=float(self.cfg["calibration"]["rest_s"]),
@@ -640,15 +644,64 @@ class Service:
             window_samples=self.window_samples,
             stride_samples=self.calib_stride_samples,
         )
-        unique_groups = np.unique(group)
-        if len(unique_groups) < 2:
+        if len(np.unique(group)) < 2:
             raise RuntimeError("need at least two trials for GroupKFold")
-        n_splits = min(int(self.cfg["cv"]["n_splits"]), len(unique_groups))
+
+        decoder_params = self._decoder_params_for(decoder_name)
+        cv_acc, cv_folds, cv_confusion = self._cross_validate(
+            X, y, group, decoder_name, decoder_params
+        )
+        logger.info(
+            "trial-level GroupKFold acc=%.3f folds=%s", cv_acc, cv_folds
+        )
+
+        final = build_decoder(decoder_name, **decoder_params)
+        final.fit(X, y)
+
+        metadata = self._build_bundle_metadata(
+            decoder=final,
+            decoder_name=decoder_name,
+            preprocessing=preprocessing,
+            session_id=session_id,
+            session_metadata=session_metadata,
+            recording_path=recording_path,
+            cv_acc=cv_acc,
+            cv_folds=cv_folds,
+            cv_confusion=cv_confusion,
+            n_trials=int(trials.shape[0]),
+        )
+        smoother_cfg = self.cfg["realtime"]["smoother"]
+        return cv_acc, Bundle(
+            decoder=final,
+            decoder_name=decoder_name,
+            decoder_params=final.get_params(),
+            preprocessing=preprocessing,
+            label_map={0: "left", 1: "right"},
+            window_samples=self.window_samples,
+            stride_samples=self.calib_stride_samples,
+            smoother_name=str(smoother_cfg["name"]),
+            smoother_params={
+                k: v for k, v in smoother_cfg.items() if k != "name"
+            },
+            metadata=metadata,
+        )
+
+    def _cross_validate(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        group: np.ndarray,
+        decoder_name: str,
+        decoder_params: dict[str, Any],
+    ) -> tuple[float, list[float], np.ndarray]:
+        """Trial-grouped GroupKFold CV. Returns (mean acc, per-fold accs,
+        aggregated confusion matrix). Windows from the same trial never
+        straddle a fold boundary."""
+        n_splits = min(int(self.cfg["cv"]["n_splits"]), len(np.unique(group)))
         splitter = GroupKFold(n_splits=n_splits)
         accs: list[float] = []
         all_true: list[int] = []
         all_pred: list[int] = []
-        decoder_params = self._decoder_params_for(decoder_name)
         for tr, te in splitter.split(X, y, groups=group):
             assert set(group[tr]).isdisjoint(set(group[te]))
             d = build_decoder(decoder_name, **decoder_params)
@@ -661,16 +714,29 @@ class Service:
         cv_confusion = confusion_matrix(
             all_true, all_pred, labels=[0, 1]
         ).astype(int)
-        logger.info("trial-level GroupKFold acc=%.3f folds=%s", cv_acc, accs)
+        return cv_acc, accs, cv_confusion
 
-        final = build_decoder(decoder_name, **decoder_params)
-        final.fit(X, y)
-
-        smoother_cfg = self.cfg["realtime"]["smoother"]
+    def _build_bundle_metadata(
+        self,
+        *,
+        decoder: Any,
+        decoder_name: str,
+        preprocessing: PreprocessingConfig,
+        session_id: str,
+        session_metadata: dict[str, Any],
+        recording_path: Path,
+        cv_acc: float,
+        cv_folds: list[float],
+        cv_confusion: np.ndarray,
+        n_trials: int,
+    ) -> dict[str, Any]:
+        """Assemble the persisted bundle metadata. Pure bookkeeping: it
+        records training provenance (CV scores, trial counts, the exact
+        preprocessing) so a saved bundle is self-describing."""
         subject = str(
             session_metadata.get("subject", session_id.split("_", 1)[0])
         )
-        metadata = make_metadata(
+        return make_metadata(
             subject=subject,
             cal_acc=cv_acc,
             raw_data_path=recording_path,
@@ -701,12 +767,12 @@ class Service:
             extra={
                 "session_id": session_id,
                 "decoder_name": decoder_name,
-                "decoder_params": final.get_params(),
+                "decoder_params": decoder.get_params(),
                 "trained_at": datetime.now(timezone.utc).isoformat(),
                 "cv_acc": cv_acc,
-                "cv_folds": accs,
+                "cv_folds": cv_folds,
                 "cv_confusion": cv_confusion.tolist(),
-                "trials_used": int(trials.shape[0]),
+                "trials_used": n_trials,
                 "window_samples": self.window_samples,
                 "stride_samples": self.calib_stride_samples,
                 "preprocessing": {
@@ -721,20 +787,6 @@ class Service:
                     f"{preprocessing.bandpass[1]:g}"
                 ),
             },
-        )
-        return cv_acc, Bundle(
-            decoder=final,
-            decoder_name=decoder_name,
-            decoder_params=final.get_params(),
-            preprocessing=preprocessing,
-            label_map={0: "left", 1: "right"},
-            window_samples=self.window_samples,
-            stride_samples=self.calib_stride_samples,
-            smoother_name=str(smoother_cfg["name"]),
-            smoother_params={
-                k: v for k, v in smoother_cfg.items() if k != "name"
-            },
-            metadata=metadata,
         )
 
     def _decoder_params_for(self, decoder_name: str) -> dict[str, Any]:
@@ -1073,6 +1125,7 @@ class Service:
         win = self.cfg["windowing"]
         self._push_status(
             "service_config:"
+            f"fixation_s={float(cal['fixation_s'])},"
             f"cue_s={float(cal['cue_s'])},"
             f"mi_s={float(cal['mi_s'])},"
             f"rest_s={float(cal['rest_s'])},"

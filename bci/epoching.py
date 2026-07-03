@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-# Markers other than these (e.g. 99 = rest) are silently dropped.
+# Only motor-imagery onsets are trials. Every other paradigm marker
+# (10/11 = left/right cue, 98 = fixation, 99 = rest) is silently dropped.
 _TRIAL_LABELS: frozenset[int] = frozenset({0, 1})
 
 
@@ -13,6 +14,7 @@ def extract_trials(
     trial_len_s: float,
     fs: float,
     onset_s: float = 0.0,
+    reject_max_abs_uv: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Slice fixed-length trials out of a continuous EEG record.
 
@@ -23,8 +25,9 @@ def extract_trials(
     timestamps : (T,) array
         Per-sample timestamps in LSL clock seconds.
     markers : list of (t_lsl_seconds, label)
-        Cue markers; only labels in {0, 1} are kept (label 99 = rest is
-        ignored).
+        Paradigm markers; only motor-imagery onsets (labels in {0, 1})
+        are kept. Cue (10/11), fixation (98), and rest (99) markers are
+        ignored.
     trial_len_s : float
         Trial duration in seconds.
     fs : float
