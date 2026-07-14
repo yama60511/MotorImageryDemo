@@ -54,6 +54,11 @@ public class BciCalibrationController : MonoBehaviour
     public int fixationMarker = 98;    // fixation cross
     public int restMarker = 99;
     public bool shuffleCalibrationTrials = true;
+    // When true, each collection run draws a fresh seed so the left/right
+    // order differs every session. When false, trialShuffleSeed is used for a
+    // reproducible order (useful for demos/tests). The effective seed is always
+    // logged so any session's order can be reconstructed offline.
+    public bool randomizeSeedPerSession = true;
     public int trialShuffleSeed = 1;
     public string decoderName = "csp_lda";
     public float serviceConfigWaitSeconds = 3.0f;
@@ -513,8 +518,13 @@ public class BciCalibrationController : MonoBehaviour
             );
         }
 
-        var labels = BuildCollectionLabels();
-        Debug.Log($"Collection marker sequence started: {labels.Count} MI-onset markers");
+        int seed = randomizeSeedPerSession
+            ? unchecked((int)System.DateTime.Now.Ticks)
+            : trialShuffleSeed;
+        var labels = BuildCollectionLabels(seed);
+        Debug.Log(
+            $"Collection marker sequence started: {labels.Count} MI-onset markers "
+            + $"(shuffle={shuffleCalibrationTrials}, seed={seed})");
 
         for (int index = 0; index < labels.Count; index++)
         {
@@ -555,7 +565,7 @@ public class BciCalibrationController : MonoBehaviour
         UpdateControlInteractivity();
     }
 
-    private List<int> BuildCollectionLabels()
+    private List<int> BuildCollectionLabels(int seed)
     {
         int nPerClass = Mathf.Max(1, trialsPerClass);
         var labels = new List<int>(nPerClass * 2);
@@ -567,7 +577,7 @@ public class BciCalibrationController : MonoBehaviour
 
         if (shuffleCalibrationTrials)
         {
-            var rng = new System.Random(trialShuffleSeed);
+            var rng = new System.Random(seed);
             for (int i = labels.Count - 1; i > 0; i--)
             {
                 int j = rng.Next(i + 1);
